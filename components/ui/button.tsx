@@ -44,8 +44,11 @@ function Button({
   className,
   variant = "default",
   size = "default",
+  // Radix-style APIs sometimes pass this; Base UI merges it onto our Button from Dialog close.
+  asChild: _asChild,
   ...props
-}: ButtonPrimitive.Props & VariantProps<typeof buttonVariants>) {
+}: ButtonPrimitive.Props &
+  VariantProps<typeof buttonVariants> & { asChild?: boolean }) {
   return (
     <ButtonPrimitive
       data-slot="button"

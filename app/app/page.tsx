@@ -1,0 +1,5 @@
+import { CineShelfApp } from "@/components/cine-shelf-app";
+
+export default function AppPage() {
+  return <CineShelfApp />;
+}
