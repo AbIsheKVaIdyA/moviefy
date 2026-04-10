@@ -1,5 +1,5 @@
-import { CineShelfApp } from "@/components/cine-shelf-app";
+import { MoviefyApp } from "@/components/cine-shelf-app";
 
 export default function AppPage() {
-  return <CineShelfApp />;
+  return <MoviefyApp />;
 }

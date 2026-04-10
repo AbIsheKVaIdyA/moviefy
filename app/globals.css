@@ -133,3 +133,64 @@
     @apply font-sans;
   }
 }
+
+/* Landing page motion — keep scoped to marketing */
+@keyframes landing-marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.landing-marquee-track {
+  display: flex;
+  width: max-content;
+  animation: landing-marquee 55s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-marquee-track {
+    animation: none;
+  }
+}
+
+.landing-marquee-track:hover {
+  animation-play-state: paused;
+}
+
+@keyframes landing-shimmer {
+  0% {
+    background-position: 200% center;
+  }
+  100% {
+    background-position: -200% center;
+  }
+}
+
+.landing-text-shimmer {
+  background: linear-gradient(
+    110deg,
+    oklch(0.97 0 0) 0%,
+    oklch(0.97 0 0) 35%,
+    oklch(0.76 0.17 151) 50%,
+    oklch(0.97 0 0) 65%,
+    oklch(0.97 0 0) 100%
+  );
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: landing-shimmer 8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-text-shimmer {
+    animation: none;
+    color: oklch(0.97 0 0);
+    background: none;
+    -webkit-background-clip: unset;
+    background-clip: unset;
+  }
+}

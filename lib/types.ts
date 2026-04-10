@@ -18,9 +18,11 @@ export interface Movie {
   genre: Genre;
   /** Tailwind gradient classes for a poster placeholder */
   posterClass: string;
-  /** Poster image URL (remote AI-style or CDN) */
+  /** Poster image URL (e.g. TMDB `image.tmdb.org`) */
   posterImage: string;
   director: string;
+  /** TMDB id for streaming / discover APIs */
+  tmdbId?: number;
 }
 
 export interface PlaylistMovie extends Movie {
@@ -37,3 +39,11 @@ export interface Playlist {
   kind: PlaylistKind;
   movies: PlaylistMovie[];
 }
+
+/** Public playlist card on Explore (backed by Supabase). */
+export type CommunityPlaylist = Playlist & {
+  ownerUserId: string;
+  ownerName: string;
+  ownerHandle: string;
+  followerCount: number;
+};

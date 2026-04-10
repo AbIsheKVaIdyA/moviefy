@@ -19,9 +19,9 @@ const fraunces = Fraunces({
 });
 
 export const metadata: Metadata = {
-  title: "CineShelf — movie lists, ranked",
+  title: "Moviefy — movie lists, ranked",
   description:
-    "Build playlists of films, rank them, group by genre, and share or keep lists private — Spotify energy for movies.",
+    "Build playlists of films, rank them, explore genres, and share or keep lists private — Spotify-style energy for movies.",
 };
 
 export default function RootLayout({

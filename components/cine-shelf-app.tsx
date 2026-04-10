@@ -1,30 +1,45 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { PosterImage } from "@/components/poster-image";
 import {
   ChevronDown,
   ChevronUp,
   Clapperboard,
   Compass,
-  ExternalLink,
   Globe,
   Heart,
   Home,
   Keyboard,
   Link2,
   ListOrdered,
+  Loader2,
   SquareStack,
-  ListVideo,
   Lock,
   Plus,
   Search,
   Sparkles,
   TrendingUp,
 } from "lucide-react";
-import { CATALOG, INITIAL_PLAYLISTS } from "@/lib/mock-data";
+import { useSupabaseApp } from "@/components/supabase-app-provider";
+import { movieFromTmdbDiscoverItem } from "@/lib/tmdb-genre-map";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
+import {
+  addMovieToPlaylistDb,
+  createPlaylist as createPlaylistDb,
+  duplicatePlaylistDb,
+  fetchProfileDisplayName,
+  fetchSavedMovieKeys,
+  fetchUserPlaylists,
+  reorderPlaylistMoviesDb,
+  setMovieSavedDb,
+  updatePlaylistMeta,
+} from "@/lib/supabase/playlist-service";
+import type { TmdbDiscoverResponse } from "@/lib/movie-enrich-types";
 import type { Genre, Movie, Playlist, PlaylistMovie } from "@/lib/types";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -47,6 +62,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { MovieDetailDialog } from "@/components/movie-detail-dialog";
+import { TmdbDiscoverSection } from "@/components/tmdb-discover-section";
 
 type ListSort = "rank" | "year" | "title" | "genre";
 
@@ -81,9 +98,11 @@ function GenrePill({
   );
 }
 
-export function CineShelfApp() {
-  const [playlists, setPlaylists] = useState<Playlist[]>(INITIAL_PLAYLISTS);
-  const [activeId, setActiveId] = useState(INITIAL_PLAYLISTS[0]?.id ?? "");
+export function MoviefyApp() {
+  const pathname = usePathname();
+  const { client, session, ready, authError } = useSupabaseApp();
+  const [playlists, setPlaylists] = useState<Playlist[]>([]);
+  const [activeId, setActiveId] = useState("");
   const [genreFilter, setGenreFilter] = useState<Genre | "all">("all");
   const [listSort, setListSort] = useState<ListSort>("rank");
   const [libraryQuery, setLibraryQuery] = useState("");
@@ -93,9 +112,7 @@ export function CineShelfApp() {
   const [newKind, setNewKind] = useState<Playlist["kind"]>("collection");
   const [addMovieOpen, setAddMovieOpen] = useState(false);
   const [movieToAdd, setMovieToAdd] = useState("");
-  const [selectedMovie, setSelectedMovie] = useState<Movie | null>(
-    CATALOG[0] ?? null,
-  );
+  const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null);
   const [savedIds, setSavedIds] = useState<Set<string>>(() => new Set());
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQ, setSearchQ] = useState("");
@@ -103,24 +120,69 @@ export function CineShelfApp() {
   const [libraryKindFilter, setLibraryKindFilter] =
     useState<LibraryKindFilter>("all");
   const [recentMovieIds, setRecentMovieIds] = useState<string[]>([]);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [pickPool, setPickPool] = useState<Movie[]>([]);
+  const [libraryLoading, setLibraryLoading] = useState(true);
+  const [displayName, setDisplayName] = useState<string | null>(null);
 
-  const active = playlists.find((p) => p.id === activeId) ?? playlists[0];
+  const loadLibrary = useCallback(async () => {
+    if (!client || !session?.user) return;
+    setLibraryLoading(true);
+    try {
+      const uid = session.user.id;
+      const [pl, saved, name] = await Promise.all([
+        fetchUserPlaylists(client, uid),
+        fetchSavedMovieKeys(client, uid),
+        fetchProfileDisplayName(client, uid),
+      ]);
+      setPlaylists(pl);
+      setSavedIds(saved);
+      setDisplayName(name);
+      setActiveId((prev) => {
+        if (typeof window !== "undefined") {
+          const fromUrl = new URLSearchParams(window.location.search).get(
+            "list",
+          );
+          if (fromUrl && pl.some((p) => p.id === fromUrl)) return fromUrl;
+        }
+        if (prev && pl.some((p) => p.id === prev)) return prev;
+        return pl[0]?.id ?? "";
+      });
+    } finally {
+      setLibraryLoading(false);
+    }
+  }, [client, session?.user]);
+
+  useEffect(() => {
+    if (!ready || !client || !session?.user) return;
+    void loadLibrary();
+  }, [ready, client, session?.user?.id, loadLibrary]);
+
+  useEffect(() => {
+    const ctrl = new AbortController();
+    fetch("/api/discover/top?sort=popularity.desc", { signal: ctrl.signal })
+      .then((r) => r.json())
+      .then((d: TmdbDiscoverResponse) => {
+        const rows = d.results ?? [];
+        setPickPool(rows.slice(0, 40).map(movieFromTmdbDiscoverItem));
+      })
+      .catch(() => setPickPool([]));
+    return () => ctrl.abort();
+  }, []);
+
+  const active = useMemo(
+    () => playlists.find((p) => p.id === activeId) ?? null,
+    [playlists, activeId],
+  );
 
   function selectMovie(movie: Movie) {
     setSelectedMovie(movie);
+    setDetailOpen(true);
     setRecentMovieIds((prev) => {
       const next = [movie.id, ...prev.filter((id) => id !== movie.id)];
       return next.slice(0, 10);
     });
   }
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const id = new URLSearchParams(window.location.search).get("list");
-    if (id && INITIAL_PLAYLISTS.some((p) => p.id === id)) {
-      setActiveId(id);
-    }
-  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined" || !activeId) return;
@@ -175,11 +237,20 @@ export function CineShelfApp() {
     );
   }, [playlists, libraryQuery, libraryKindFilter]);
 
+  const allKnownMovies = useMemo(() => {
+    const m = new Map<string, Movie>();
+    for (const p of playlists) {
+      for (const mv of p.movies) m.set(mv.id, mv);
+    }
+    for (const mv of pickPool) m.set(mv.id, mv);
+    return m;
+  }, [playlists, pickPool]);
+
   const recentMovies = useMemo(() => {
     return recentMovieIds
-      .map((id) => CATALOG.find((m) => m.id === id))
+      .map((id) => allKnownMovies.get(id))
       .filter((m): m is Movie => m != null);
-  }, [recentMovieIds]);
+  }, [recentMovieIds, allKnownMovies]);
 
   const activeGenreCount = useMemo(() => {
     if (!active) return 0;
@@ -192,37 +263,46 @@ export function CineShelfApp() {
   }, [active]);
 
   const catalogForAdd = useMemo(() => {
-    if (!active) return CATALOG;
+    if (!active) return pickPool;
     const inList = new Set(active.movies.map((m) => m.id));
-    return CATALOG.filter((m) => !inList.has(m.id));
-  }, [active]);
+    return pickPool.filter((m) => !inList.has(m.id));
+  }, [active, pickPool]);
 
-  const exploreRows = useMemo(() => CATALOG.slice(0, 6), []);
-  const recommendations = useMemo(() => CATALOG.slice(2, 10), []);
-  const browseRail = useMemo(() => [...CATALOG].reverse(), []);
+  const exploreRows = useMemo(() => pickPool.slice(0, 6), [pickPool]);
+  const recommendations = useMemo(() => pickPool.slice(2, 10), [pickPool]);
+  const browseRail = useMemo(() => [...pickPool].reverse(), [pickPool]);
 
   const searchResults = useMemo(() => {
     const q = searchQ.trim().toLowerCase();
+    const pool = [...allKnownMovies.values()];
     if (!q) {
       return {
-        movies: CATALOG.slice(0, 8),
+        movies: pool.slice(0, 8),
         lists: playlists.slice(0, 6),
       };
     }
     return {
-      movies: CATALOG.filter(
-        (m) =>
-          m.title.toLowerCase().includes(q) ||
-          m.director.toLowerCase().includes(q) ||
-          m.genre.toLowerCase().includes(q),
-      ).slice(0, 12),
+      movies: pool
+        .filter(
+          (m) =>
+            m.title.toLowerCase().includes(q) ||
+            m.director.toLowerCase().includes(q) ||
+            m.genre.toLowerCase().includes(q),
+        )
+        .slice(0, 12),
       lists: playlists.filter((p) => p.name.toLowerCase().includes(q)).slice(0, 8),
     };
-  }, [searchQ, playlists]);
+  }, [searchQ, playlists, allKnownMovies]);
 
   const inActiveList = useMemo(() => {
     if (!active || !selectedMovie) return false;
-    return active.movies.some((m) => m.id === selectedMovie.id);
+    return active.movies.some(
+      (m) =>
+        m.id === selectedMovie.id ||
+        (m.tmdbId != null &&
+          m.tmdbId === selectedMovie.tmdbId &&
+          selectedMovie.tmdbId != null),
+    );
   }, [active, selectedMovie]);
 
   useEffect(() => {
@@ -246,75 +326,72 @@ export function CineShelfApp() {
     setToast(message);
   }
 
-  function updateActive(updater: (p: Playlist) => Playlist) {
-    setPlaylists((prev) => prev.map((p) => (p.id === activeId ? updater(p) : p)));
-  }
-
-  function createPlaylist() {
-    const id = `p-${Date.now()}`;
-    const next: Playlist = {
-      id,
+  async function createPlaylist() {
+    if (!client || !session?.user) return;
+    const pl = await createPlaylistDb(client, session.user.id, {
       name: newName.trim() || "Untitled playlist",
       description: newDesc.trim() || "No description yet.",
       kind: newKind,
-      isPublic: false,
-      movies: [],
-    };
-    setPlaylists((prev) => [...prev, next]);
-    setActiveId(id);
+    });
+    if (!pl) {
+      pushToast("Could not create playlist");
+      return;
+    }
     setNewName("");
     setNewDesc("");
     setNewPlaylistOpen(false);
+    await loadLibrary();
+    setActiveId(pl.id);
     pushToast("Playlist created");
   }
 
-  function addMovieFromCatalog() {
-    if (!active || !movieToAdd) return;
-    const movie = CATALOG.find((m) => m.id === movieToAdd);
+  async function addMovieFromCatalog() {
+    if (!client || !active || !movieToAdd) return;
+    const movie = pickPool.find((m) => m.id === movieToAdd);
     if (!movie) return;
-    updateActive((p) => ({
-      ...p,
-      movies: renumber([...p.movies, { ...movie, rank: p.movies.length + 1 }]),
-    }));
+    const ok = await addMovieToPlaylistDb(client, active.id, movie);
+    if (!ok) {
+      pushToast("Could not add movie");
+      return;
+    }
     setMovieToAdd("");
     setAddMovieOpen(false);
+    await loadLibrary();
     pushToast(`Added “${movie.title}” to ${active.name}`);
   }
 
-  function addMovieToActive(movie: Movie) {
-    if (!active) return;
-    if (active.movies.some((m) => m.id === movie.id)) {
+  async function addMovieToActive(movie: Movie) {
+    if (!client || !active) return;
+    if (
+      active.movies.some(
+        (m) =>
+          m.id === movie.id ||
+          (m.tmdbId != null &&
+            m.tmdbId === movie.tmdbId &&
+            movie.tmdbId != null),
+      )
+    ) {
       pushToast("Already in this list");
       return;
     }
-    updateActive((p) => ({
-      ...p,
-      movies: renumber([...p.movies, { ...movie, rank: p.movies.length + 1 }]),
-    }));
+    const ok = await addMovieToPlaylistDb(client, active.id, movie);
+    if (!ok) {
+      pushToast("Could not add movie");
+      return;
+    }
+    await loadLibrary();
     pushToast(`Added “${movie.title}” to ${active.name}`);
   }
 
-  function moveMovie(index: number, direction: -1 | 1) {
-    if (!active) return;
+  async function moveMovie(index: number, direction: -1 | 1) {
+    if (!client || !active) return;
     const next = [...active.movies];
     const target = index + direction;
     if (target < 0 || target >= next.length) return;
     [next[index], next[target]] = [next[target], next[index]];
-    updateActive((p) => ({ ...p, movies: renumber(next) }));
-  }
-
-  function toggleSaved(id: string) {
-    setSavedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-
-  function openTrailer(movie: Movie) {
-    const q = encodeURIComponent(`${movie.title} ${movie.year} trailer`);
-    window.open(`https://www.youtube.com/results?search_query=${q}`, "_blank", "noopener,noreferrer");
+    const orderedIds = renumber(next).map((m) => m.id);
+    await reorderPlaylistMoviesDb(client, active.id, orderedIds);
+    await loadLibrary();
   }
 
   function copyShareLink() {
@@ -325,25 +402,61 @@ export function CineShelfApp() {
     pushToast("Share link copied");
   }
 
-  function duplicateActivePlaylist() {
-    if (!active) return;
-    const id = `p-${Date.now()}`;
-    const next: Playlist = {
-      ...active,
-      id,
-      name: `${active.name} (copy)`,
-      isPublic: false,
-      movies: renumber(active.movies.map((m) => ({ ...m }))),
-    };
-    setPlaylists((prev) => [...prev, next]);
-    setActiveId(id);
+  async function duplicateActivePlaylist() {
+    if (!client || !session?.user || !active) return;
+    const copy = await duplicatePlaylistDb(client, session.user.id, active);
+    if (!copy) {
+      pushToast("Could not duplicate list");
+      return;
+    }
+    await loadLibrary();
+    setActiveId(copy.id);
     pushToast("Duplicated list");
   }
 
-  if (!active) return null;
+  if (!isSupabaseConfigured()) {
+    return (
+      <div className="flex min-h-dvh flex-col items-center justify-center gap-3 bg-[#0f0f0f] px-6 text-center text-white">
+        <p className="max-w-md text-sm text-white/80">
+          Add{" "}
+          <code className="rounded bg-white/10 px-1">NEXT_PUBLIC_SUPABASE_URL</code>{" "}
+          and{" "}
+          <code className="rounded bg-white/10 px-1">
+            NEXT_PUBLIC_SUPABASE_ANON_KEY
+          </code>{" "}
+          or{" "}
+          <code className="rounded bg-white/10 px-1">
+            NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+          </code>{" "}
+          to <code className="rounded bg-white/10 px-1">.env.local</code>, then
+          restart the dev server.
+        </p>
+      </div>
+    );
+  }
+
+  if (authError) {
+    return (
+      <div className="flex min-h-dvh flex-col items-center justify-center gap-3 bg-[#0f0f0f] px-6 text-center text-white">
+        <p className="max-w-md text-sm text-amber-200/90">{authError}</p>
+        <p className="max-w-md text-xs text-white/50">
+          In Supabase: Authentication → Providers → enable Anonymous sign-ins,
+          then refresh.
+        </p>
+      </div>
+    );
+  }
+
+  if (!ready || !session || libraryLoading) {
+    return (
+      <div className="flex min-h-dvh items-center justify-center bg-[#0f0f0f] text-white">
+        <Loader2 className="size-9 animate-spin text-primary" aria-hidden />
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-dvh bg-[#0f0f0f] pb-[88px] text-white">
+    <div className="min-h-dvh bg-[#0f0f0f] pb-6 text-white">
       <div className="mx-auto flex max-w-[1600px] gap-2 p-2">
         <aside className="hidden w-[300px] shrink-0 rounded-xl bg-[#161616] p-3 lg:block">
           <div className="flex items-center justify-between px-2 py-1">
@@ -352,7 +465,7 @@ export function CineShelfApp() {
                 <Clapperboard className="size-4" />
               </div>
               <div>
-                <p className="font-heading text-base font-semibold">CineShelf</p>
+                <p className="font-heading text-base font-semibold">Moviefy</p>
                 <p className="text-xs text-muted-foreground">Your library</p>
               </div>
             </div>
@@ -362,14 +475,28 @@ export function CineShelfApp() {
           </div>
 
           <div className="mt-3 grid gap-1 px-2">
-            <Button variant="ghost" className="justify-start gap-2 text-sm">
+            <Link
+              href="/app"
+              className={cn(
+                buttonVariants({ variant: "ghost" }),
+                "justify-start gap-2 text-sm",
+                pathname === "/app" && "bg-white/10 text-white",
+              )}
+            >
               <Home className="size-4" />
               Home
-            </Button>
-            <Button variant="ghost" className="justify-start gap-2 text-sm">
+            </Link>
+            <Link
+              href="/app/explore"
+              className={cn(
+                buttonVariants({ variant: "ghost" }),
+                "justify-start gap-2 text-sm",
+                pathname?.startsWith("/app/explore") && "bg-white/10 text-white",
+              )}
+            >
               <Compass className="size-4" />
               Explore
-            </Button>
+            </Link>
           </div>
 
           <div className="mt-3 flex flex-wrap gap-1 px-2">
@@ -408,7 +535,7 @@ export function CineShelfApp() {
             </div>
           </div>
 
-          <ScrollArea className="mt-3 h-[calc(100dvh-240px-88px)] px-1">
+          <ScrollArea className="mt-3 h-[calc(100dvh-240px)] px-1">
             <div className="space-y-1">
               {sidebarPlaylists.map((p) => (
                 <button
@@ -424,22 +551,16 @@ export function CineShelfApp() {
                   )}
                 >
                   <div className="relative h-11 w-11 overflow-hidden rounded-md bg-zinc-800">
-                    {p.movies[0]?.posterImage ? (
-                      <PosterImage
-                        src={p.movies[0].posterImage}
-                        alt={p.movies[0].title}
-                        fill
-                        className="object-cover"
-                        sizes="44px"
-                      />
-                    ) : (
-                      <div
-                        className={cn(
-                          "h-full w-full bg-gradient-to-br",
-                          p.movies[0]?.posterClass ?? "from-zinc-700 to-zinc-900",
-                        )}
-                      />
-                    )}
+                    <PosterImage
+                      src={p.movies[0]?.posterImage ?? ""}
+                      alt={p.movies[0]?.title ?? "Playlist"}
+                      fill
+                      placeholderGradient={
+                        p.movies[0]?.posterClass ?? "from-zinc-700 to-zinc-900"
+                      }
+                      className="object-cover"
+                      sizes="44px"
+                    />
                   </div>
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium">{p.name}</p>
@@ -467,35 +588,47 @@ export function CineShelfApp() {
                 K
               </span>
             </button>
+            <Link
+              href="/app/explore"
+              className={cn(
+                buttonVariants({ variant: "secondary", size: "sm" }),
+                "shrink-0 gap-1.5 border-0 bg-white/10 text-white hover:bg-white/15 lg:hidden",
+              )}
+            >
+              <Compass className="size-4" />
+              Explore
+            </Link>
             <Avatar size="sm">
-              <AvatarFallback>A</AvatarFallback>
+              <AvatarFallback>
+                {(displayName ?? "You").slice(0, 1).toUpperCase()}
+              </AvatarFallback>
             </Avatar>
           </header>
 
-          <ScrollArea className="h-[calc(100dvh-66px-88px)]">
+          <ScrollArea className="h-[calc(100dvh-66px)]">
             <div className="space-y-8 p-4 pb-10">
               <section className="rounded-xl bg-gradient-to-b from-[#252525] to-[#151515] p-5">
                 <p className="text-xs uppercase tracking-wide text-muted-foreground">Good evening</p>
-                <h1 className="mt-1 font-heading text-3xl font-semibold">Abhishek</h1>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Tap any poster to preview below — ⌘K to search. Share copies a link with{" "}
-                  <code className="rounded bg-white/10 px-1 text-xs">?list=</code> for this session.
-                </p>
+                <h1 className="mt-1 font-heading text-3xl font-semibold">
+                  {displayName ?? "there"}
+                </h1>
                 <div className="mt-4 flex flex-wrap items-center gap-2">
                   <Badge variant="secondary" className="bg-white/10 text-white">
                     {playlists.length} playlists
                   </Badge>
                   <Badge variant="secondary" className="bg-white/10 text-white">
-                    {CATALOG.length} catalog titles
+                    {pickPool.length} TMDB picks (add-movie pool)
                   </Badge>
                   <Badge variant="secondary" className="bg-white/10 text-white">
-                    {savedIds.size} saved picks
+                    {savedIds.size} saved keys
                   </Badge>
                   <Badge variant="secondary" className="bg-white/10 text-white">
-                    {active.movies.length} in “{active.name}”
+                    {active
+                      ? `${active.movies.length} in “${active.name}”`
+                      : "No list open"}
                   </Badge>
                   <Badge variant="secondary" className="bg-white/10 text-white">
-                    {activeGenreCount} genres this list
+                    {active ? `${activeGenreCount} genres this list` : "—"}
                   </Badge>
                 </div>
               </section>
@@ -522,6 +655,7 @@ export function CineShelfApp() {
                             src={movie.posterImage}
                             alt={movie.title}
                             fill
+                            placeholderGradient={movie.posterClass}
                             className="object-cover"
                             sizes="100px"
                           />
@@ -555,22 +689,16 @@ export function CineShelfApp() {
                       )}
                     >
                       <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-md bg-zinc-800">
-                        {p.movies[0]?.posterImage ? (
-                          <PosterImage
-                            src={p.movies[0].posterImage}
-                            alt={p.movies[0].title}
-                            fill
-                            className="object-cover"
-                            sizes="56px"
-                          />
-                        ) : (
-                          <div
-                            className={cn(
-                              "h-full w-full bg-gradient-to-br",
-                              p.movies[0]?.posterClass ?? "from-zinc-700 to-zinc-900",
-                            )}
-                          />
-                        )}
+                        <PosterImage
+                          src={p.movies[0]?.posterImage ?? ""}
+                          alt={p.movies[0]?.title ?? "Playlist"}
+                          fill
+                          placeholderGradient={
+                            p.movies[0]?.posterClass ?? "from-zinc-700 to-zinc-900"
+                          }
+                          className="object-cover"
+                          sizes="56px"
+                        />
                       </div>
                       <div className="min-w-0">
                         <p className="truncate text-sm font-semibold">{p.name}</p>
@@ -604,6 +732,7 @@ export function CineShelfApp() {
                           src={movie.posterImage}
                           alt={movie.title}
                           fill
+                          placeholderGradient={movie.posterClass}
                           className="object-cover"
                           sizes="140px"
                         />
@@ -613,6 +742,11 @@ export function CineShelfApp() {
                   ))}
                 </div>
               </section>
+
+              <TmdbDiscoverSection
+                selectedMovieId={selectedMovie?.id ?? null}
+                onSelectMovie={selectMovie}
+              />
 
               <section>
                 <div className="mb-3 flex items-center justify-between">
@@ -634,6 +768,7 @@ export function CineShelfApp() {
                         src={movie.posterImage}
                         alt={movie.title}
                         fill
+                        placeholderGradient={movie.posterClass}
                         className="object-cover object-center transition duration-500 group-hover:scale-[1.03]"
                         sizes="(max-width: 1280px) 50vw, 33vw"
                       />
@@ -669,6 +804,7 @@ export function CineShelfApp() {
                           src={movie.posterImage}
                           alt={movie.title}
                           fill
+                          placeholderGradient={movie.posterClass}
                           className="object-cover transition duration-300 hover:scale-105"
                           sizes="(max-width: 1024px) 50vw, 25vw"
                         />
@@ -683,6 +819,22 @@ export function CineShelfApp() {
               </section>
 
               <section className="rounded-xl bg-[#1a1a1a] p-4">
+                {!active ? (
+                  <div className="py-8 text-center">
+                    <p className="text-sm text-muted-foreground">
+                      Create a playlist to start ranking films. Everything syncs to Supabase.
+                    </p>
+                    <Button
+                      className="mt-4"
+                      onClick={() => setNewPlaylistOpen(true)}
+                    >
+                      <Plus className="size-4" />
+                      New playlist
+                    </Button>
+                  </div>
+                ) : null}
+                {active ? (
+                <>
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <div className="flex items-center gap-2">
@@ -698,9 +850,13 @@ export function CineShelfApp() {
                       <Switch
                         id="public"
                         checked={active.isPublic}
-                        onCheckedChange={(checked) =>
-                          updateActive((p) => ({ ...p, isPublic: checked }))
-                        }
+                        onCheckedChange={async (checked) => {
+                          if (!client) return;
+                          await updatePlaylistMeta(client, active.id, {
+                            is_public: checked,
+                          });
+                          await loadLibrary();
+                        }}
                       />
                       <Label htmlFor="public" className="text-xs">
                         {active.isPublic ? (
@@ -799,6 +955,7 @@ export function CineShelfApp() {
                             src={movie.posterImage}
                             alt={movie.title}
                             fill
+                            placeholderGradient={movie.posterClass}
                             className="object-cover"
                             sizes="40px"
                           />
@@ -836,85 +993,54 @@ export function CineShelfApp() {
                     );
                   })}
                 </div>
+                </>
+                ) : null}
               </section>
             </div>
           </ScrollArea>
         </main>
       </div>
 
-      {/* Spotify-style preview bar */}
-      {selectedMovie && (
-        <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-white/10 bg-[#121212] px-3 py-2 shadow-[0_-8px_32px_rgba(0,0,0,0.45)]">
-          <div className="mx-auto flex max-w-[1600px] items-center gap-3">
-            <div className="relative h-14 w-10 shrink-0 overflow-hidden rounded bg-zinc-800">
-              <PosterImage
-                src={selectedMovie.posterImage}
-                alt={selectedMovie.title}
-                fill
-                className="object-cover"
-                sizes="40px"
-              />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold">{selectedMovie.title}</p>
-              <p className="truncate text-xs text-muted-foreground">
-                {selectedMovie.year} · {selectedMovie.genre} · {selectedMovie.director}
-              </p>
-            </div>
-            <div className="hidden h-1 flex-1 max-w-md rounded-full bg-white/10 sm:block">
-              <div className="h-full w-1/3 rounded-full bg-primary/80" />
-            </div>
-            <div className="flex shrink-0 items-center gap-1 sm:gap-2">
-              <Button
-                size="icon-sm"
-                variant="ghost"
-                className={cn(savedIds.has(selectedMovie.id) && "text-primary")}
-                onClick={() => {
-                  const was = savedIds.has(selectedMovie.id);
-                  toggleSaved(selectedMovie.id);
-                  pushToast(was ? "Removed from saved" : "Saved for later");
-                }}
-                aria-label="Save"
-              >
-                <Heart
-                  className={cn("size-4", savedIds.has(selectedMovie.id) && "fill-current")}
-                />
-              </Button>
-              <Button
-                size="sm"
-                variant="secondary"
-                className="hidden gap-1 sm:inline-flex"
-                onClick={() => openTrailer(selectedMovie)}
-              >
-                <ListVideo className="size-4" />
-                Trailer
-              </Button>
-              <Button
-                size="icon-sm"
-                variant="ghost"
-                className="sm:hidden"
-                onClick={() => openTrailer(selectedMovie)}
-                aria-label="Trailer"
-              >
-                <ExternalLink className="size-4" />
-              </Button>
-              <Button
-                size="sm"
-                variant="default"
-                disabled={inActiveList}
-                onClick={() => addMovieToActive(selectedMovie)}
-              >
-                <Plus className="size-4" />
-                <span className="hidden sm:inline">{inActiveList ? "In list" : "Add to list"}</span>
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+      <MovieDetailDialog
+        movie={selectedMovie}
+        open={detailOpen}
+        onOpenChange={setDetailOpen}
+        inActiveList={inActiveList}
+        saved={
+          selectedMovie
+            ? savedIds.has(selectedMovie.id) ||
+              (selectedMovie.tmdbId != null &&
+                savedIds.has(`tmdb-${selectedMovie.tmdbId}`))
+            : false
+        }
+        onToggleSave={async () => {
+          if (!client || !session?.user || !selectedMovie) return;
+          const was =
+            savedIds.has(selectedMovie.id) ||
+            (selectedMovie.tmdbId != null &&
+              savedIds.has(`tmdb-${selectedMovie.tmdbId}`));
+          const ok = await setMovieSavedDb(
+            client,
+            session.user.id,
+            selectedMovie,
+            !was,
+          );
+          if (!ok) {
+            pushToast("Could not update saved");
+            return;
+          }
+          await loadLibrary();
+          pushToast(was ? "Removed from saved" : "Saved for later");
+        }}
+        onAddToList={() => {
+          if (!selectedMovie) return;
+          addMovieToActive(selectedMovie);
+        }}
+      />
 
       {toast && (
         <div
-          className="fixed bottom-[96px] left-1/2 z-50 -translate-x-1/2 rounded-full border border-white/10 bg-zinc-900 px-4 py-2 text-sm text-white shadow-lg"
+          className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-full border border-white/10 bg-zinc-900 px-4 py-2 text-sm text-white shadow-lg"
           role="status"
         >
           {toast}
@@ -963,6 +1089,7 @@ export function CineShelfApp() {
                         src={m.posterImage}
                         alt={m.title}
                         fill
+                        placeholderGradient={m.posterClass}
                         className="object-cover"
                         sizes="28px"
                       />
@@ -1060,7 +1187,9 @@ export function CineShelfApp() {
         <DialogContent className="border-border/80 bg-[#1e1e1e] text-white">
           <DialogHeader>
             <DialogTitle>Add movie</DialogTitle>
-            <DialogDescription>Add one from your sample catalog.</DialogDescription>
+            <DialogDescription>
+              Pick from the current TMDB discover pool (same source as the home rails).
+            </DialogDescription>
           </DialogHeader>
           <div className="grid gap-2 py-2">
             <Label>Movie</Label>
