@@ -38,6 +38,7 @@ create table if not exists public.playlists (
   is_public boolean not null default false,
   kind text not null default 'collection',
   follower_count integer not null default 0,
+  like_count integer not null default 0,
   created_at timestamptz default now(),
   updated_at timestamptz default now(),
   constraint playlists_kind_check check (kind in ('collection', 'watched'))
@@ -64,10 +65,31 @@ create table if not exists public.playlist_follows (
   primary key (user_id, playlist_id)
 );
 
+create table if not exists public.playlist_likes (
+  user_id uuid not null references auth.users (id) on delete cascade,
+  playlist_id uuid not null references public.playlists (id) on delete cascade,
+  created_at timestamptz default now(),
+  primary key (user_id, playlist_id)
+);
+
 create index if not exists playlists_user_id_idx on public.playlists (user_id);
 create index if not exists playlists_public_idx on public.playlists (is_public) where is_public = true;
 create index if not exists playlist_items_playlist_idx on public.playlist_items (playlist_id);
+create index if not exists playlist_likes_playlist_idx on public.playlist_likes (playlist_id);
 create index if not exists saved_movies_user_idx on public.saved_movies (user_id);
+
+-- Per-user tier + short review (community totals via RPC; no design lift from other sites)
+create table if not exists public.movie_user_takes (
+  user_id uuid not null references auth.users (id) on delete cascade,
+  movie_id uuid not null references public.movies (id) on delete cascade,
+  tier text not null check (tier in ('skip', 'okay', 'recommend', 'love')),
+  review text not null default '' check (char_length(review) <= 2000),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (user_id, movie_id)
+);
+
+create index if not exists movie_user_takes_movie_idx on public.movie_user_takes (movie_id);
 
 -- ---------------------------------------------------------------------------
 -- Triggers
@@ -107,13 +129,45 @@ create trigger playlist_follows_after_change
   after insert or delete on public.playlist_follows
   for each row execute function public.playlist_follows_after_change();
 
+create or replace function public.playlist_likes_after_change()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if tg_op = 'INSERT' then
+    update public.playlists set like_count = like_count + 1 where id = new.playlist_id;
+    return new;
+  elsif tg_op = 'DELETE' then
+    update public.playlists set like_count = greatest(0, like_count - 1) where id = old.playlist_id;
+    return old;
+  end if;
+  return null;
+end;
+$$;
+
+drop trigger if exists playlist_likes_after_change on public.playlist_likes;
+create trigger playlist_likes_after_change
+  after insert or delete on public.playlist_likes
+  for each row execute function public.playlist_likes_after_change();
+
 create or replace function public.handle_new_user()
 returns trigger language plpgsql security definer set search_path = public as $$
 begin
   insert into public.profiles (id, display_name, handle)
   values (
     new.id,
-    coalesce(new.raw_user_meta_data->>'full_name', 'Movie fan'),
+    coalesce(
+      nullif(
+        trim(
+          concat_ws(
+            ' ',
+            nullif(trim(new.raw_user_meta_data->>'first_name'), ''),
+            nullif(trim(new.raw_user_meta_data->>'last_name'), '')
+          )
+        ),
+        ''
+      ),
+      nullif(trim(new.raw_user_meta_data->>'full_name'), ''),
+      'Movie fan'
+    ),
     null
   )
   on conflict (id) do nothing;
@@ -126,6 +180,38 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
 
+drop trigger if exists movie_user_takes_set_updated_at on public.movie_user_takes;
+create trigger movie_user_takes_set_updated_at
+  before update on public.movie_user_takes
+  for each row execute function public.set_updated_at();
+
+-- Aggregated tier counts by TMDB id (no row leak; security definer)
+create or replace function public.get_movie_take_meter_by_tmdb(p_tmdb_id integer)
+returns jsonb
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select coalesce(
+    (
+      select jsonb_build_object(
+        'skip', count(*) filter (where t.tier = 'skip'),
+        'okay', count(*) filter (where t.tier = 'okay'),
+        'recommend', count(*) filter (where t.tier = 'recommend'),
+        'love', count(*) filter (where t.tier = 'love')
+      )
+      from public.movie_user_takes t
+      inner join public.movies m on m.id = t.movie_id
+      where m.tmdb_id = p_tmdb_id
+    ),
+    '{"skip":0,"okay":0,"recommend":0,"love":0}'::jsonb
+  );
+$$;
+
+revoke all on function public.get_movie_take_meter_by_tmdb(integer) from public;
+grant execute on function public.get_movie_take_meter_by_tmdb(integer) to authenticated;
+
 -- ---------------------------------------------------------------------------
 -- Row level security
 -- ---------------------------------------------------------------------------
@@ -135,7 +221,9 @@ alter table public.movies enable row level security;
 alter table public.playlists enable row level security;
 alter table public.playlist_items enable row level security;
 alter table public.saved_movies enable row level security;
+alter table public.movie_user_takes enable row level security;
 alter table public.playlist_follows enable row level security;
+alter table public.playlist_likes enable row level security;
 
 -- Profiles: readable for explore; users manage their own row
 drop policy if exists "profiles_select_all" on public.profiles;
@@ -225,3 +313,30 @@ create policy "follows_insert_own" on public.playlist_follows for insert with ch
 
 drop policy if exists "follows_delete_own" on public.playlist_follows;
 create policy "follows_delete_own" on public.playlist_follows for delete using (auth.uid() = user_id);
+
+-- Playlist likes (heart on Explore — counts on playlists.like_count)
+drop policy if exists "likes_select_own" on public.playlist_likes;
+create policy "likes_select_own" on public.playlist_likes for select using (auth.uid() = user_id);
+
+drop policy if exists "likes_insert_own" on public.playlist_likes;
+create policy "likes_insert_own" on public.playlist_likes for insert with check (auth.uid() = user_id);
+
+drop policy if exists "likes_delete_own" on public.playlist_likes;
+create policy "likes_delete_own" on public.playlist_likes for delete using (auth.uid() = user_id);
+
+-- Movie takes (your tier + review; community meter uses RPC only)
+drop policy if exists "movie_takes_select_own" on public.movie_user_takes;
+drop policy if exists "movie_takes_select_visible" on public.movie_user_takes;
+create policy "movie_takes_select_visible" on public.movie_user_takes for select using (
+  auth.uid() = user_id
+  or (auth.uid() is not null and coalesce(trim(review), '') <> '')
+);
+
+drop policy if exists "movie_takes_insert_own" on public.movie_user_takes;
+create policy "movie_takes_insert_own" on public.movie_user_takes for insert with check (auth.uid() = user_id);
+
+drop policy if exists "movie_takes_update_own" on public.movie_user_takes;
+create policy "movie_takes_update_own" on public.movie_user_takes for update using (auth.uid() = user_id);
+
+drop policy if exists "movie_takes_delete_own" on public.movie_user_takes;
+create policy "movie_takes_delete_own" on public.movie_user_takes for delete using (auth.uid() = user_id);

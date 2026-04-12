@@ -1,5 +1,7 @@
 import { PosterImage } from "@/components/poster-image";
+import { LandingAuthModal } from "@/components/landing-auth-modal";
 import Link from "next/link";
+import { Suspense } from "react";
 import {
   ArrowRight,
   Clapperboard,
@@ -60,7 +62,7 @@ export default async function Home() {
   const marqueeMovies = [...popular, ...popular, ...popular];
 
   return (
-    <main className="relative min-h-dvh overflow-x-hidden bg-[#060607] text-white">
+    <main className="relative min-h-dvh overflow-x-hidden text-white">
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_-20%,oklch(0.76_0.17_151_/_0.18),transparent)]" />
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(ellipse_60%_40%_at_100%_50%,oklch(0.55_0.2_300_/_0.08),transparent)]" />
 
@@ -77,7 +79,7 @@ export default async function Home() {
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">
             <Link
-              href="/app/explore"
+              href="/?auth=sign-in&next=%2Fapp%2Fexplore"
               className={cn(
                 buttonVariants({ variant: "ghost", size: "sm" }),
                 "hidden gap-1.5 text-zinc-300 sm:inline-flex",
@@ -86,11 +88,14 @@ export default async function Home() {
               <Compass className="size-4" />
               Explore
             </Link>
-            <Link href="/app" className={cn(buttonVariants({ variant: "ghost", size: "sm" }))}>
-              Preview
+            <Link
+              href="/?auth=sign-in&next=%2Fapp%2Fexplore"
+              className={cn(buttonVariants({ variant: "ghost", size: "sm" }))}
+            >
+              Sign in
             </Link>
-            <Link href="/app" className={cn(buttonVariants({ size: "sm" }))}>
-              Start free
+            <Link href="/?auth=sign-up&next=%2Fapp%2Fexplore" className={cn(buttonVariants({ size: "sm" }))}>
+              Sign up
               <ArrowRight className="size-4" />
             </Link>
           </div>
@@ -134,7 +139,7 @@ export default async function Home() {
               </p>
               <div className="mt-8 flex flex-wrap gap-3">
                 <Link
-                  href="/app"
+                  href="/?auth=sign-in&next=%2Fapp%2Fexplore"
                   className={cn(
                     buttonVariants({ size: "lg" }),
                     "h-12 gap-2 px-7 shadow-[0_0_40px_-8px_var(--color-primary)]",
@@ -144,7 +149,7 @@ export default async function Home() {
                   Open Moviefy
                 </Link>
                 <Link
-                  href="/app/explore"
+                  href="/?auth=sign-in&next=%2Fapp%2Fexplore"
                   className={cn(buttonVariants({ size: "lg", variant: "outline" }), "h-12 border-white/15 bg-white/5")}
                 >
                   <Compass className="size-4" />
@@ -284,7 +289,7 @@ export default async function Home() {
                 it. Public or private per list.
               </p>
               <Link
-                href="/app"
+                href="/?auth=sign-up&next=%2Fapp%2Fexplore"
                 className={cn(
                   buttonVariants({ variant: "secondary", size: "sm" }),
                   "relative z-10 mt-6 border-0 bg-white/10 text-white hover:bg-white/15",
@@ -301,7 +306,10 @@ export default async function Home() {
               <p className="mt-2 text-sm text-zinc-400">
                 Live TMDB rails, public creator playlists, follow and save to your library.
               </p>
-              <Link href="/app/explore" className="mt-4 inline-flex text-sm font-medium text-primary hover:underline">
+              <Link
+                href="/?auth=sign-in&next=%2Fapp%2Fexplore"
+                className="mt-4 inline-flex text-sm font-medium text-primary hover:underline"
+              >
                 Open Explore →
               </Link>
             </article>
@@ -349,7 +357,7 @@ export default async function Home() {
               <p className="mt-1 text-sm text-zinc-500">Every title is a real TMDB poster — hover for names.</p>
             </div>
             <Link
-              href="/app"
+              href="/?auth=sign-in&next=%2Fapp%2Fexplore"
               className="hidden shrink-0 text-sm font-medium text-primary hover:underline sm:inline"
             >
               See all in app →
@@ -385,12 +393,15 @@ export default async function Home() {
             Free to use. Your lists stay yours. Jump in and add your first ranked row tonight.
           </p>
           <div className="relative mt-8 flex flex-wrap justify-center gap-3">
-            <Link href="/app" className={cn(buttonVariants({ size: "lg" }), "h-12 px-8")}>
+            <Link
+              href="/?auth=sign-in&next=%2Fapp%2Fexplore"
+              className={cn(buttonVariants({ size: "lg" }), "h-12 px-8")}
+            >
               Launch Moviefy
               <ArrowRight className="size-4" />
             </Link>
             <Link
-              href="/app/explore"
+              href="/?auth=sign-in&next=%2Fapp%2Fexplore"
               className={cn(buttonVariants({ size: "lg", variant: "outline" }), "h-12 border-white/20 bg-black/20")}
             >
               Explore first
@@ -398,6 +409,10 @@ export default async function Home() {
           </div>
         </section>
       </div>
+
+      <Suspense fallback={null}>
+        <LandingAuthModal />
+      </Suspense>
     </main>
   );
 }

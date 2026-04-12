@@ -46,4 +46,5 @@ export type CommunityPlaylist = Playlist & {
   ownerName: string;
   ownerHandle: string;
   followerCount: number;
+  likeCount: number;
 };

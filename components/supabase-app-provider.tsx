@@ -10,7 +10,6 @@ import {
 import type { Session } from "@supabase/supabase-js";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createBrowserSupabaseClient } from "@/lib/supabase/browser-client";
-import { ensureAnonymousSession } from "@/lib/supabase/playlist-service";
 
 type Ctx = {
   client: SupabaseClient | null;
@@ -44,21 +43,30 @@ export function SupabaseAppProvider({
       setReady(true);
       return;
     }
-    ensureAnonymousSession(client)
-      .then((s) => {
-        setSession(s);
-        setAuthError(null);
+
+    client.auth
+      .getSession()
+      .then(({ data: { session: s }, error }) => {
+        if (error) {
+          setAuthError(error.message);
+          setSession(null);
+        } else {
+          setSession(s);
+          setAuthError(null);
+        }
       })
       .catch((e: unknown) => {
-        setAuthError(
-          e instanceof Error ? e.message : "Could not start session",
-        );
+        setAuthError(e instanceof Error ? e.message : "Auth unavailable");
+        setSession(null);
       })
       .finally(() => setReady(true));
 
     const {
       data: { subscription },
-    } = client.auth.onAuthStateChange((_event, s) => setSession(s));
+    } = client.auth.onAuthStateChange((_event, s) => {
+      setSession(s);
+      setAuthError(null);
+    });
     return () => subscription.unsubscribe();
   }, [client]);
 

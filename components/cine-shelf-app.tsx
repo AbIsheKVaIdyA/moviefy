@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { PosterImage } from "@/components/poster-image";
 import {
   ChevronDown,
@@ -16,12 +16,12 @@ import {
   Link2,
   ListOrdered,
   Loader2,
+  LogOut,
+  Settings,
   SquareStack,
   Lock,
   Plus,
   Search,
-  Sparkles,
-  TrendingUp,
 } from "lucide-react";
 import { useSupabaseApp } from "@/components/supabase-app-provider";
 import { movieFromTmdbDiscoverItem } from "@/lib/tmdb-genre-map";
@@ -32,11 +32,16 @@ import {
   duplicatePlaylistDb,
   fetchProfileDisplayName,
   fetchSavedMovieKeys,
+  fetchSavedMoviesForUser,
   fetchUserPlaylists,
+  getOrCreatePrimaryWatchedPlaylist,
+  movieMatchesInPlaylistRow,
+  removeMovieFromPlaylistDb,
   reorderPlaylistMoviesDb,
   setMovieSavedDb,
   updatePlaylistMeta,
 } from "@/lib/supabase/playlist-service";
+import { avatarLetter, greetingFirstName } from "@/lib/display-name";
 import type { TmdbDiscoverResponse } from "@/lib/movie-enrich-types";
 import type { Genre, Movie, Playlist, PlaylistMovie } from "@/lib/types";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -46,6 +51,14 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Dialog,
   DialogContent,
@@ -62,8 +75,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { prefetchMovieEnrich } from "@/lib/movie-enrich-prefetch";
+import { movieToDetailPageHref } from "@/lib/movie-detail-nav";
 import { MovieDetailDialog } from "@/components/movie-detail-dialog";
-import { TmdbDiscoverSection } from "@/components/tmdb-discover-section";
 
 type ListSort = "rank" | "year" | "title" | "genre";
 
@@ -100,6 +114,7 @@ function GenrePill({
 
 export function MoviefyApp() {
   const pathname = usePathname();
+  const router = useRouter();
   const { client, session, ready, authError } = useSupabaseApp();
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [activeId, setActiveId] = useState("");
@@ -114,6 +129,14 @@ export function MoviefyApp() {
   const [movieToAdd, setMovieToAdd] = useState("");
   const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null);
   const [savedIds, setSavedIds] = useState<Set<string>>(() => new Set());
+  const [savedMovies, setSavedMovies] = useState<Movie[]>([]);
+  const [libraryNav, setLibraryNav] = useState<"playlists" | "saved">(
+    "playlists",
+  );
+  const [pickListOpen, setPickListOpen] = useState(false);
+  const [pickListMovie, setPickListMovie] = useState<Movie | null>(null);
+  const [moviePendingForNewList, setMoviePendingForNewList] =
+    useState<Movie | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQ, setSearchQ] = useState("");
   const [toast, setToast] = useState<string | null>(null);
@@ -124,20 +147,23 @@ export function MoviefyApp() {
   const [pickPool, setPickPool] = useState<Movie[]>([]);
   const [libraryLoading, setLibraryLoading] = useState(true);
   const [displayName, setDisplayName] = useState<string | null>(null);
+  const [watchedDialogBusy, setWatchedDialogBusy] = useState(false);
 
   const loadLibrary = useCallback(async () => {
     if (!client || !session?.user) return;
     setLibraryLoading(true);
     try {
       const uid = session.user.id;
-      const [pl, saved, name] = await Promise.all([
+      const [pl, saved, name, savedList] = await Promise.all([
         fetchUserPlaylists(client, uid),
         fetchSavedMovieKeys(client, uid),
         fetchProfileDisplayName(client, uid),
+        fetchSavedMoviesForUser(client, uid),
       ]);
       setPlaylists(pl);
       setSavedIds(saved);
       setDisplayName(name);
+      setSavedMovies(savedList);
       setActiveId((prev) => {
         if (typeof window !== "undefined") {
           const fromUrl = new URLSearchParams(window.location.search).get(
@@ -175,9 +201,54 @@ export function MoviefyApp() {
     [playlists, activeId],
   );
 
+  const primaryWatchedPlaylist = useMemo(
+    () => playlists.find((p) => p.kind === "watched"),
+    [playlists],
+  );
+
+  const selectedInWatched = useMemo(() => {
+    if (!selectedMovie || !primaryWatchedPlaylist) return false;
+    return primaryWatchedPlaylist.movies.some((m) =>
+      movieMatchesInPlaylistRow(m, selectedMovie),
+    );
+  }, [selectedMovie, primaryWatchedPlaylist]);
+
+  const toggleDetailWatched = useCallback(async () => {
+    if (!client || !session?.user || !selectedMovie) return;
+    setWatchedDialogBusy(true);
+    try {
+      const pl = await getOrCreatePrimaryWatchedPlaylist(client, session.user.id);
+      if (!pl) {
+        pushToast("Could not open Watched list");
+        return;
+      }
+      if (selectedInWatched) {
+        const ok = await removeMovieFromPlaylistDb(client, pl.id, selectedMovie);
+        if (!ok) pushToast("Could not remove from Watched");
+        else pushToast("Removed from Watched");
+      } else {
+        const ok = await addMovieToPlaylistDb(client, pl.id, selectedMovie);
+        if (!ok) pushToast("Could not add to Watched");
+        else pushToast("Added to Watched");
+      }
+      await loadLibrary();
+    } finally {
+      setWatchedDialogBusy(false);
+    }
+  }, [client, session?.user, selectedMovie, selectedInWatched, loadLibrary]);
+
   function selectMovie(movie: Movie) {
     setSelectedMovie(movie);
-    setDetailOpen(true);
+    const href = movieToDetailPageHref(movie);
+    if (href) {
+      setDetailOpen(false);
+      void (async () => {
+        await prefetchMovieEnrich(movie);
+        router.push(href);
+      })();
+    } else {
+      setDetailOpen(true);
+    }
     setRecentMovieIds((prev) => {
       const next = [movie.id, ...prev.filter((id) => id !== movie.id)];
       return next.slice(0, 10);
@@ -237,14 +308,15 @@ export function MoviefyApp() {
     );
   }, [playlists, libraryQuery, libraryKindFilter]);
 
+  /** Titles in your lists + saved — Home search stays in your library only (no TMDB pool). */
   const allKnownMovies = useMemo(() => {
     const m = new Map<string, Movie>();
     for (const p of playlists) {
       for (const mv of p.movies) m.set(mv.id, mv);
     }
-    for (const mv of pickPool) m.set(mv.id, mv);
+    for (const mv of savedMovies) m.set(mv.id, mv);
     return m;
-  }, [playlists, pickPool]);
+  }, [playlists, savedMovies]);
 
   const recentMovies = useMemo(() => {
     return recentMovieIds
@@ -267,10 +339,6 @@ export function MoviefyApp() {
     const inList = new Set(active.movies.map((m) => m.id));
     return pickPool.filter((m) => !inList.has(m.id));
   }, [active, pickPool]);
-
-  const exploreRows = useMemo(() => pickPool.slice(0, 6), [pickPool]);
-  const recommendations = useMemo(() => pickPool.slice(2, 10), [pickPool]);
-  const browseRail = useMemo(() => [...pickPool].reverse(), [pickPool]);
 
   const searchResults = useMemo(() => {
     const q = searchQ.trim().toLowerCase();
@@ -337,12 +405,24 @@ export function MoviefyApp() {
       pushToast("Could not create playlist");
       return;
     }
+    const pending = moviePendingForNewList;
+    if (pending) {
+      const added = await addMovieToPlaylistDb(client, pl.id, pending);
+      pushToast(
+        added
+          ? `Playlist created — added “${pending.title}”`
+          : "Playlist created — we couldn’t add that title automatically.",
+      );
+      setMoviePendingForNewList(null);
+    } else {
+      pushToast("Playlist created");
+    }
     setNewName("");
     setNewDesc("");
     setNewPlaylistOpen(false);
     await loadLibrary();
     setActiveId(pl.id);
-    pushToast("Playlist created");
+    setLibraryNav("playlists");
   }
 
   async function addMovieFromCatalog() {
@@ -416,7 +496,7 @@ export function MoviefyApp() {
 
   if (!isSupabaseConfigured()) {
     return (
-      <div className="flex min-h-dvh flex-col items-center justify-center gap-3 bg-[#0f0f0f] px-6 text-center text-white">
+      <div className="flex min-h-dvh flex-col items-center justify-center gap-3 bg-black/35 px-6 text-center text-white backdrop-blur-md">
         <p className="max-w-md text-sm text-white/80">
           Add{" "}
           <code className="rounded bg-white/10 px-1">NEXT_PUBLIC_SUPABASE_URL</code>{" "}
@@ -437,11 +517,10 @@ export function MoviefyApp() {
 
   if (authError) {
     return (
-      <div className="flex min-h-dvh flex-col items-center justify-center gap-3 bg-[#0f0f0f] px-6 text-center text-white">
+      <div className="flex min-h-dvh flex-col items-center justify-center gap-3 bg-black/35 px-6 text-center text-white backdrop-blur-md">
         <p className="max-w-md text-sm text-amber-200/90">{authError}</p>
         <p className="max-w-md text-xs text-white/50">
-          In Supabase: Authentication → Providers → enable Anonymous sign-ins,
-          then refresh.
+          Check your Supabase URL and anon key, then refresh.
         </p>
       </div>
     );
@@ -449,16 +528,16 @@ export function MoviefyApp() {
 
   if (!ready || !session || libraryLoading) {
     return (
-      <div className="flex min-h-dvh items-center justify-center bg-[#0f0f0f] text-white">
+      <div className="flex min-h-dvh items-center justify-center bg-black/35 text-white backdrop-blur-md">
         <Loader2 className="size-9 animate-spin text-primary" aria-hidden />
       </div>
     );
   }
 
   return (
-    <div className="min-h-dvh bg-[#0f0f0f] pb-6 text-white">
+    <div className="min-h-dvh pb-6 text-white">
       <div className="mx-auto flex max-w-[1600px] gap-2 p-2">
-        <aside className="hidden w-[300px] shrink-0 rounded-xl bg-[#161616] p-3 lg:block">
+        <aside className="hidden w-[300px] shrink-0 rounded-xl bg-card p-3 lg:block">
           <div className="flex items-center justify-between px-2 py-1">
             <div className="flex items-center gap-2">
               <div className="flex size-9 items-center justify-center rounded-lg bg-primary/20 text-primary">
@@ -466,7 +545,7 @@ export function MoviefyApp() {
               </div>
               <div>
                 <p className="font-heading text-base font-semibold">Moviefy</p>
-                <p className="text-xs text-muted-foreground">Your library</p>
+                <p className="text-xs text-muted-foreground">Home &amp; lists</p>
               </div>
             </div>
             <Button size="icon-sm" variant="ghost" onClick={() => setNewPlaylistOpen(true)}>
@@ -480,11 +559,14 @@ export function MoviefyApp() {
               className={cn(
                 buttonVariants({ variant: "ghost" }),
                 "justify-start gap-2 text-sm",
-                pathname === "/app" && "bg-white/10 text-white",
+                pathname === "/app" &&
+                  libraryNav === "playlists" &&
+                  "bg-white/10 text-white",
               )}
+              onClick={() => setLibraryNav("playlists")}
             >
               <Home className="size-4" />
-              Home
+              Your theatre
             </Link>
             <Link
               href="/app/explore"
@@ -497,6 +579,21 @@ export function MoviefyApp() {
               <Compass className="size-4" />
               Explore
             </Link>
+            <button
+              type="button"
+              className={cn(
+                buttonVariants({ variant: "ghost" }),
+                "w-full justify-start gap-2 text-sm",
+                libraryNav === "saved" && "bg-white/10 text-white",
+              )}
+              onClick={() => {
+                setLibraryNav("saved");
+                void loadLibrary();
+              }}
+            >
+              <Heart className="size-4" />
+              Saved
+            </button>
           </div>
 
           <div className="mt-3 flex flex-wrap gap-1 px-2">
@@ -542,6 +639,7 @@ export function MoviefyApp() {
                   key={p.id}
                   type="button"
                   onClick={() => {
+                    setLibraryNav("playlists");
                     setActiveId(p.id);
                     setGenreFilter("all");
                   }}
@@ -574,53 +672,206 @@ export function MoviefyApp() {
           </ScrollArea>
         </aside>
 
-        <main className="min-w-0 flex-1 rounded-xl bg-[#151515]">
-          <header className="sticky top-0 z-10 flex items-center justify-between gap-3 rounded-t-xl border-b border-white/5 bg-[#151515]/95 px-4 py-3 backdrop-blur">
+        <main className="min-w-0 flex-1 rounded-xl bg-card">
+          <header className="sticky top-0 z-10 flex flex-wrap items-center gap-2 rounded-t-xl border-b border-white/5 bg-card/95 px-3 py-2.5 backdrop-blur sm:gap-3 sm:px-4 sm:py-3">
             <button
               type="button"
               onClick={() => setSearchOpen(true)}
-              className="relative flex w-full max-w-xl items-center gap-2 rounded-lg border border-white/5 bg-[#222] py-2 pl-9 pr-3 text-left text-sm text-muted-foreground transition hover:border-white/10 hover:bg-[#2a2a2a]"
+              className="relative order-1 flex min-w-0 flex-1 basis-[min(100%,18rem)] items-center gap-2 rounded-lg border border-white/5 bg-[#222] py-2 pl-9 pr-3 text-left text-sm text-muted-foreground transition hover:border-white/10 hover:bg-[#2a2a2a] sm:max-w-xl"
             >
-              <Search className="absolute left-2.5 size-4 text-muted-foreground" />
-              <span className="truncate">Search movies, directors, playlists…</span>
-              <span className="ml-auto hidden items-center gap-0.5 rounded border border-white/10 bg-black/30 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground sm:inline-flex">
+              <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <span className="truncate">Search your titles & playlists…</span>
+              <span className="ml-auto hidden shrink-0 items-center gap-0.5 rounded border border-white/10 bg-black/30 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground sm:inline-flex">
                 <Keyboard className="size-3" />
                 K
               </span>
             </button>
-            <Link
-              href="/app/explore"
-              className={cn(
-                buttonVariants({ variant: "secondary", size: "sm" }),
-                "shrink-0 gap-1.5 border-0 bg-white/10 text-white hover:bg-white/15 lg:hidden",
-              )}
-            >
-              <Compass className="size-4" />
-              Explore
-            </Link>
-            <Avatar size="sm">
-              <AvatarFallback>
-                {(displayName ?? "You").slice(0, 1).toUpperCase()}
-              </AvatarFallback>
-            </Avatar>
+            <div className="order-2 flex shrink-0 items-center gap-1 sm:order-3 sm:gap-2">
+              <Link
+                href="/app"
+                aria-label="Your theatre"
+                className={cn(
+                  buttonVariants({ variant: "secondary", size: "sm" }),
+                  "gap-1.5 border-0 bg-white/10 text-white hover:bg-white/15 lg:hidden",
+                  libraryNav === "playlists" && "ring-1 ring-white/25",
+                )}
+                onClick={() => setLibraryNav("playlists")}
+              >
+                <Home className="size-4" />
+                <span className="hidden sm:inline">Your theatre</span>
+              </Link>
+              <button
+                type="button"
+                aria-label="Saved movies"
+                className={cn(
+                  buttonVariants({ variant: "secondary", size: "sm" }),
+                  "gap-1.5 border-0 bg-white/10 text-white hover:bg-white/15 lg:hidden",
+                  libraryNav === "saved" && "ring-1 ring-primary/50",
+                )}
+                onClick={() => {
+                  setLibraryNav("saved");
+                  void loadLibrary();
+                }}
+              >
+                <Heart className="size-4" />
+                <span className="hidden sm:inline">Saved</span>
+              </button>
+              <Link
+                href="/app/explore"
+                className={cn(
+                  buttonVariants({ variant: "secondary", size: "sm" }),
+                  "gap-1.5 border-0 bg-white/10 text-white hover:bg-white/15 lg:hidden",
+                )}
+              >
+                <Compass className="size-4" />
+                Explore
+              </Link>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                aria-label="Sign out"
+                className="gap-1.5 text-muted-foreground hover:bg-white/10 hover:text-white"
+                onClick={() => {
+                  void client?.auth.signOut().then(() => {
+                    router.push("/?auth=sign-in");
+                    router.refresh();
+                  });
+                }}
+              >
+                <LogOut className="size-4 shrink-0" />
+                <span className="hidden sm:inline">Sign out</span>
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  aria-label="Account menu"
+                  className={cn(
+                    buttonVariants({ variant: "ghost", size: "icon-sm" }),
+                    "rounded-full text-white hover:bg-white/10",
+                  )}
+                >
+                  <Avatar size="sm">
+                    <AvatarFallback>
+                      {avatarLetter(displayName, session)}
+                    </AvatarFallback>
+                  </Avatar>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  align="end"
+                  sideOffset={8}
+                  className="min-w-48 border-white/10 bg-[#1e1e1e] text-white"
+                >
+                  <DropdownMenuLabel className="text-white/70">
+                    Account
+                  </DropdownMenuLabel>
+                  <DropdownMenuItem
+                    disabled
+                    className="text-white/50 focus:bg-white/10 focus:text-white"
+                  >
+                    <Settings className="size-4 opacity-60" />
+                    Settings
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator className="bg-white/10" />
+                  <DropdownMenuItem
+                    variant="destructive"
+                    className="focus:bg-red-950/50"
+                    onClick={() => {
+                      void client?.auth.signOut().then(() => {
+                        router.push("/?auth=sign-in");
+                        router.refresh();
+                      });
+                    }}
+                  >
+                    <LogOut className="size-4" />
+                    Sign out
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </header>
 
-          <ScrollArea className="h-[calc(100dvh-66px)]">
+          <ScrollArea key={libraryNav} className="h-[calc(100dvh-66px)]">
             <div className="space-y-8 p-4 pb-10">
+              {libraryNav === "saved" ? (
+                <section className="rounded-xl bg-[#1a1a1a] p-4">
+                  <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <h2 className="font-heading text-xl">Saved for later</h2>
+                      <p className="text-sm text-muted-foreground">
+                        Titles you saved from movie details.
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => setLibraryNav("playlists")}
+                    >
+                      Playlists
+                    </Button>
+                  </div>
+                  {savedMovies.length === 0 ? (
+                    <div className="py-8 text-center text-sm text-muted-foreground">
+                      Nothing saved yet. Open a film and tap{" "}
+                      <Heart className="mx-0.5 inline size-3.5 align-text-bottom text-primary" />{" "}
+                      Save.
+                    </div>
+                  ) : (
+                    <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+                      {savedMovies.map((movie) => (
+                        <button
+                          key={movie.id}
+                          type="button"
+                          onClick={() => selectMovie(movie)}
+                          className={cn(
+                            "rounded-lg bg-[#242424] p-2 text-left transition hover:bg-[#2c2c2c]",
+                            selectedMovie?.id === movie.id && "ring-1 ring-primary/50",
+                          )}
+                        >
+                          <div className="relative aspect-[2/3] overflow-hidden rounded-md bg-zinc-800">
+                            <PosterImage
+                              src={movie.posterImage}
+                              alt={movie.title}
+                              fill
+                              placeholderGradient={movie.posterClass}
+                              className="object-cover"
+                              sizes="160px"
+                            />
+                          </div>
+                          <p className="mt-2 line-clamp-2 text-xs font-medium">{movie.title}</p>
+                          <p className="text-[11px] text-muted-foreground">
+                            {movie.year} · {movie.genre}
+                          </p>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </section>
+              ) : (
+              <>
               <section className="rounded-xl bg-gradient-to-b from-[#252525] to-[#151515] p-5">
-                <p className="text-xs uppercase tracking-wide text-muted-foreground">Good evening</p>
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                  Welcome back
+                </p>
                 <h1 className="mt-1 font-heading text-3xl font-semibold">
-                  {displayName ?? "there"}
+                  {greetingFirstName(displayName, session)}
                 </h1>
+                <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+                  This space is only your playlists and saved films. Trending, genres, meme
+                  picks, and community lists live on{" "}
+                  <Link
+                    href="/app/explore"
+                    className="font-medium text-primary underline-offset-4 hover:underline"
+                  >
+                    Explore
+                  </Link>
+                  .
+                </p>
                 <div className="mt-4 flex flex-wrap items-center gap-2">
                   <Badge variant="secondary" className="bg-white/10 text-white">
                     {playlists.length} playlists
                   </Badge>
                   <Badge variant="secondary" className="bg-white/10 text-white">
-                    {pickPool.length} TMDB picks (add-movie pool)
-                  </Badge>
-                  <Badge variant="secondary" className="bg-white/10 text-white">
-                    {savedIds.size} saved keys
+                    {savedIds.size} saved
                   </Badge>
                   <Badge variant="secondary" className="bg-white/10 text-white">
                     {active
@@ -682,7 +933,10 @@ export function MoviefyApp() {
                     <button
                       key={p.id}
                       type="button"
-                      onClick={() => setActiveId(p.id)}
+                      onClick={() => {
+                        setLibraryNav("playlists");
+                        setActiveId(p.id);
+                      }}
                       className={cn(
                         "flex items-center gap-3 rounded-lg bg-[#1f1f1f] p-2 text-left transition hover:bg-[#292929] hover:shadow-lg hover:shadow-black/20",
                         p.id === activeId && "ring-1 ring-primary/40",
@@ -706,113 +960,6 @@ export function MoviefyApp() {
                           {p.kind === "watched" ? "Watched log" : "Playlist"} · {p.movies.length} titles
                         </p>
                       </div>
-                    </button>
-                  ))}
-                </div>
-              </section>
-
-              <section>
-                <div className="mb-3 flex items-center justify-between">
-                  <h2 className="font-heading text-xl">Discover strip</h2>
-                  <span className="text-xs text-muted-foreground">Scroll sideways · snap</span>
-                </div>
-                <div className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                  {browseRail.map((movie) => (
-                    <button
-                      key={movie.id}
-                      type="button"
-                      onClick={() => selectMovie(movie)}
-                      className={cn(
-                        "w-[140px] shrink-0 snap-start text-left transition hover:opacity-95",
-                        selectedMovie?.id === movie.id && "ring-2 ring-primary/50 ring-offset-2 ring-offset-[#151515]",
-                      )}
-                    >
-                      <div className="relative aspect-[2/3] overflow-hidden rounded-lg bg-zinc-800">
-                        <PosterImage
-                          src={movie.posterImage}
-                          alt={movie.title}
-                          fill
-                          placeholderGradient={movie.posterClass}
-                          className="object-cover"
-                          sizes="140px"
-                        />
-                      </div>
-                      <p className="mt-2 line-clamp-2 text-xs font-medium leading-tight">{movie.title}</p>
-                    </button>
-                  ))}
-                </div>
-              </section>
-
-              <TmdbDiscoverSection
-                selectedMovieId={selectedMovie?.id ?? null}
-                onSelectMovie={selectMovie}
-              />
-
-              <section>
-                <div className="mb-3 flex items-center justify-between">
-                  <h2 className="font-heading text-xl">Explore by genre</h2>
-                  <Sparkles className="size-4 text-primary" />
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                  {exploreRows.map((movie) => (
-                    <button
-                      key={movie.id}
-                      type="button"
-                      onClick={() => selectMovie(movie)}
-                      className={cn(
-                        "group relative min-h-[220px] overflow-hidden rounded-lg text-left outline-none transition hover:ring-2 hover:ring-primary/30 focus-visible:ring-2 focus-visible:ring-primary",
-                        selectedMovie?.id === movie.id && "ring-2 ring-primary/50",
-                      )}
-                    >
-                      <PosterImage
-                        src={movie.posterImage}
-                        alt={movie.title}
-                        fill
-                        placeholderGradient={movie.posterClass}
-                        className="object-cover object-center transition duration-500 group-hover:scale-[1.03]"
-                        sizes="(max-width: 1280px) 50vw, 33vw"
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/35 to-black/10" />
-                      <div className="relative z-10 flex h-full min-h-[220px] flex-col justify-end p-4">
-                        <p className="text-sm font-semibold text-white/90">{movie.genre}</p>
-                        <p className="mt-1 text-lg font-semibold leading-snug">{movie.title}</p>
-                        <p className="text-xs text-white/70">{movie.director}</p>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </section>
-
-              <section>
-                <div className="mb-3 flex items-center justify-between">
-                  <h2 className="font-heading text-xl">Trending right now</h2>
-                  <TrendingUp className="size-4 text-primary" />
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                  {recommendations.map((movie) => (
-                    <button
-                      key={movie.id}
-                      type="button"
-                      onClick={() => selectMovie(movie)}
-                      className={cn(
-                        "rounded-lg bg-[#1f1f1f] p-3 text-left transition hover:bg-[#262626] hover:shadow-md hover:shadow-black/30",
-                        selectedMovie?.id === movie.id && "ring-1 ring-primary/40",
-                      )}
-                    >
-                      <div className="relative h-32 overflow-hidden rounded-md bg-zinc-800">
-                        <PosterImage
-                          src={movie.posterImage}
-                          alt={movie.title}
-                          fill
-                          placeholderGradient={movie.posterClass}
-                          className="object-cover transition duration-300 hover:scale-105"
-                          sizes="(max-width: 1024px) 50vw, 25vw"
-                        />
-                      </div>
-                      <p className="mt-2 truncate text-sm font-medium">{movie.title}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {movie.year} · {movie.genre}
-                      </p>
                     </button>
                   ))}
                 </div>
@@ -996,6 +1143,8 @@ export function MoviefyApp() {
                 </>
                 ) : null}
               </section>
+              </>
+              )}
             </div>
           </ScrollArea>
         </main>
@@ -1005,6 +1154,13 @@ export function MoviefyApp() {
         movie={selectedMovie}
         open={detailOpen}
         onOpenChange={setDetailOpen}
+        supabase={client}
+        userId={session?.user?.id ?? null}
+        viewerDisplayName={
+          displayName?.trim() ||
+          session?.user?.email?.split("@")[0] ||
+          null
+        }
         inActiveList={inActiveList}
         saved={
           selectedMovie
@@ -1029,14 +1185,128 @@ export function MoviefyApp() {
             pushToast("Could not update saved");
             return;
           }
-          await loadLibrary();
+          const [keys, list] = await Promise.all([
+            fetchSavedMovieKeys(client, session.user.id),
+            fetchSavedMoviesForUser(client, session.user.id),
+          ]);
+          setSavedIds(keys);
+          setSavedMovies(list);
           pushToast(was ? "Removed from saved" : "Saved for later");
         }}
         onAddToList={() => {
           if (!selectedMovie) return;
-          addMovieToActive(selectedMovie);
+          setPickListMovie(selectedMovie);
+          setPickListOpen(true);
         }}
+        watched={selectedInWatched}
+        onToggleWatched={session?.user ? toggleDetailWatched : undefined}
+        watchedBusy={watchedDialogBusy}
       />
+
+      <Dialog
+        open={pickListOpen}
+        onOpenChange={(o) => {
+          setPickListOpen(o);
+          if (!o) setPickListMovie(null);
+        }}
+      >
+        <DialogContent className="border-border/80 bg-[#1e1e1e] text-white sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add to playlist</DialogTitle>
+            <DialogDescription>
+              {pickListMovie
+                ? `Choose a list for “${pickListMovie.title}”, or create a new one.`
+                : "Choose a list for this title."}
+            </DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="max-h-72">
+            {playlists.length === 0 ? (
+              <div className="space-y-3 py-2">
+                <p className="text-sm text-muted-foreground">
+                  You do not have a playlist yet. Create one, then we will add this title.
+                </p>
+                <Button
+                  className="w-full"
+                  onClick={() => {
+                    setMoviePendingForNewList(pickListMovie);
+                    setPickListOpen(false);
+                    setPickListMovie(null);
+                    setNewPlaylistOpen(true);
+                  }}
+                >
+                  <Plus className="size-4" />
+                  Create playlist
+                </Button>
+              </div>
+            ) : (
+              <ul className="space-y-1 py-1">
+                {playlists.map((p) => (
+                  <li key={p.id}>
+                    <button
+                      type="button"
+                      className="flex w-full items-center gap-3 rounded-md px-2 py-2.5 text-left text-sm hover:bg-white/5"
+                      onClick={() => {
+                        if (!client || !pickListMovie) return;
+                        void (async () => {
+                          const ok = await addMovieToPlaylistDb(
+                            client,
+                            p.id,
+                            pickListMovie,
+                          );
+                          if (!ok) {
+                            pushToast("Could not add to that list");
+                            return;
+                          }
+                          setPickListOpen(false);
+                          setPickListMovie(null);
+                          await loadLibrary();
+                          setLibraryNav("playlists");
+                          setActiveId(p.id);
+                          pushToast(`Added to “${p.name}”`);
+                        })();
+                      }}
+                    >
+                      <div className="relative h-10 w-7 shrink-0 overflow-hidden rounded bg-zinc-800">
+                        <PosterImage
+                          src={p.movies[0]?.posterImage ?? ""}
+                          alt=""
+                          fill
+                          placeholderGradient={
+                            p.movies[0]?.posterClass ?? "from-zinc-700 to-zinc-900"
+                          }
+                          className="object-cover"
+                          sizes="28px"
+                        />
+                      </div>
+                      <span className="min-w-0 flex-1 truncate font-medium">{p.name}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {p.movies.length} titles
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </ScrollArea>
+          {playlists.length > 0 ? (
+            <DialogFooter className="flex-col gap-2 sm:flex-col">
+              <Button
+                variant="outline"
+                className="w-full border-white/15"
+                onClick={() => {
+                  setMoviePendingForNewList(pickListMovie);
+                  setPickListOpen(false);
+                  setPickListMovie(null);
+                  setNewPlaylistOpen(true);
+                }}
+              >
+                <Plus className="size-4" />
+                Create new playlist
+              </Button>
+            </DialogFooter>
+          ) : null}
+        </DialogContent>
+      </Dialog>
 
       {toast && (
         <div
@@ -1056,9 +1326,10 @@ export function MoviefyApp() {
       >
         <DialogContent className="border-white/10 bg-[#1a1a1a] text-white sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Search</DialogTitle>
+            <DialogTitle>Search your library</DialogTitle>
             <DialogDescription>
-              Find a title or jump to a playlist. Shortcut: ⌘K / Ctrl+K
+              Films in your playlists or saved list, plus your playlist names. For TMDB
+              discovery, use Explore. Shortcut: ⌘K / Ctrl+K
             </DialogDescription>
           </DialogHeader>
           <Input
@@ -1070,7 +1341,7 @@ export function MoviefyApp() {
           />
           <ScrollArea className="max-h-72">
             <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Movies
+              Your titles
             </p>
             <ul className="space-y-1">
               {searchResults.movies.map((m) => (
@@ -1114,6 +1385,7 @@ export function MoviefyApp() {
                     type="button"
                     className="w-full rounded-md px-2 py-2 text-left text-sm hover:bg-white/5"
                     onClick={() => {
+                      setLibraryNav("playlists");
                       setActiveId(p.id);
                       setGenreFilter("all");
                       setSearchOpen(false);
@@ -1188,7 +1460,8 @@ export function MoviefyApp() {
           <DialogHeader>
             <DialogTitle>Add movie</DialogTitle>
             <DialogDescription>
-              Pick from the current TMDB discover pool (same source as the home rails).
+              Quick picks from a TMDB pool (for adding to your list). Browse the full
+              catalog on Explore.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-2 py-2">

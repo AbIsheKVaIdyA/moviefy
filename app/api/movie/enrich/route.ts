@@ -1,13 +1,45 @@
 import { NextRequest, NextResponse } from "next/server";
 import type {
+  MovieEnrichOmdbInfo,
   MovieEnrichResponse,
   StreamingEntry,
+  TmdbCastMember,
   YoutubeReview,
 } from "@/lib/movie-enrich-types";
+import {
+  tmdbBackdropUrl as buildTmdbBackdropUrl,
+  tmdbProfileUrl,
+} from "@/lib/tmdb-image";
+
+/** Server-side secrets (OMDB_API_KEY, TMDB_API_KEY, …) — set in Vercel env, not NEXT_PUBLIC_. */
+export const runtime = "nodejs";
 
 const TMDB_KEY = process.env.TMDB_API_KEY;
 const OMDB_KEY = process.env.OMDB_API_KEY;
-const YT_KEY = process.env.YOUTUBE_API_KEY;
+
+/** Accept common env names; trim so pasted keys with newlines still work. */
+function resolveYoutubeDataApiKey(): string {
+  const candidates = [
+    process.env.YOUTUBE_API_KEY,
+    process.env.YOUTUBE_DATA_API_KEY,
+    process.env.GOOGLE_API_KEY,
+  ];
+  for (const c of candidates) {
+    const t = c?.trim();
+    if (t) return t;
+  }
+  return "";
+}
+
+const YT_KEY = resolveYoutubeDataApiKey();
+
+/** YouTube error messages sometimes include HTML links; UI renders plain text only. */
+function stripApiHtmlMessage(message: string): string {
+  return message
+    .replace(/<[^>]*>/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
 /** Normalize OMDb source strings to the site name users recognize. */
 function canonicalRatingSource(name: string): string {
@@ -51,7 +83,13 @@ export async function GET(request: NextRequest) {
   let resolvedTitle = title;
   let resolvedYear = year;
   let overview: string | null = null;
+  let tmdbVoteAverage: number | null = null;
+  let tmdbVoteCount: number | null = null;
+  let tmdbGenres: { id: number; name: string }[] = [];
+  let runtimeMinutes: number | null = null;
+  let tmdbBackdropUrl: string | null = null;
   let trailerYoutubeKey: string | null = null;
+  let tmdbCast: TmdbCastMember[] = [];
   const streaming: StreamingEntry[] = [];
 
   async function resolveTmdbIdFromSearch(): Promise<string | null> {
@@ -74,7 +112,7 @@ export async function GET(request: NextRequest) {
 
   if (tmdbId && TMDB_KEY) {
     try {
-      const [detailRes, provRes, videosRes] = await Promise.all([
+      const [detailRes, provRes, videosRes, creditsRes] = await Promise.all([
         fetch(
           `https://api.themoviedb.org/3/movie/${tmdbId}?api_key=${TMDB_KEY}`,
         ),
@@ -84,11 +122,19 @@ export async function GET(request: NextRequest) {
         fetch(
           `https://api.themoviedb.org/3/movie/${tmdbId}/videos?api_key=${TMDB_KEY}`,
         ),
+        fetch(
+          `https://api.themoviedb.org/3/movie/${tmdbId}/credits?api_key=${TMDB_KEY}`,
+        ),
       ]);
       const detail = (await detailRes.json()) as {
         title?: string;
         release_date?: string;
         overview?: string;
+        vote_average?: number;
+        vote_count?: number;
+        genres?: { id?: number; name?: string }[];
+        runtime?: number;
+        backdrop_path?: string | null;
       };
       const prov = (await provRes.json()) as {
         results?: Record<
@@ -109,10 +155,53 @@ export async function GET(request: NextRequest) {
         }[];
       };
 
+      if (creditsRes.ok) {
+        const credits = (await creditsRes.json()) as {
+          cast?: {
+            name?: string;
+            character?: string;
+            profile_path?: string | null;
+            order?: number;
+          }[];
+        };
+        const raw = credits.cast ?? [];
+        const sorted = [...raw].sort(
+          (a, b) => (a.order ?? 999) - (b.order ?? 999),
+        );
+        tmdbCast = sorted
+          .filter((c) => c?.name && String(c.name).trim().length > 0)
+          .slice(0, 18)
+          .map((c) => ({
+            name: String(c.name).trim(),
+            character:
+              typeof c.character === "string" && c.character.trim()
+                ? c.character.trim()
+                : null,
+            profileUrl: tmdbProfileUrl(c.profile_path ?? null, "w185"),
+          }));
+      }
+
       if (detail.title) resolvedTitle = detail.title;
       if (detail.release_date)
         resolvedYear = detail.release_date.slice(0, 4) || resolvedYear;
       overview = detail.overview ?? null;
+      if (typeof detail.vote_average === "number") tmdbVoteAverage = detail.vote_average;
+      if (typeof detail.vote_count === "number") tmdbVoteCount = detail.vote_count;
+      if (Array.isArray(detail.genres)) {
+        tmdbGenres = detail.genres
+          .filter(
+            (g): g is { id: number; name: string } =>
+              g != null &&
+              typeof g.id === "number" &&
+              typeof g.name === "string" &&
+              g.name.length > 0,
+          )
+          .map((g) => ({ id: g.id, name: g.name }));
+      }
+      if (typeof detail.runtime === "number" && detail.runtime > 0) {
+        runtimeMinutes = detail.runtime;
+      }
+      tmdbBackdropUrl = buildTmdbBackdropUrl(detail.backdrop_path ?? null, "w1280");
 
       const us = prov.results?.[region];
       if (us) {
@@ -151,21 +240,38 @@ export async function GET(request: NextRequest) {
 
   const ratings: { source: string; value: string }[] = [];
   let imdbId: string | null = null;
+  let omdb: MovieEnrichOmdbInfo | null = null;
 
   if (OMDB_KEY && resolvedTitle) {
-    try {
+    type OmdbJson = {
+      Response?: string;
+      Error?: string;
+      Ratings?: { Source: string; Value: string }[];
+      imdbRating?: string;
+      imdbID?: string;
+      Metascore?: string;
+      tomatoMeter?: string;
+      tomatoUserMeter?: string;
+    };
+
+    const fetchOmdb = async (withYear: boolean): Promise<OmdbJson> => {
       const u = new URL("https://www.omdbapi.com/");
       u.searchParams.set("apikey", OMDB_KEY);
       u.searchParams.set("t", resolvedTitle);
-      if (resolvedYear) u.searchParams.set("y", resolvedYear);
+      u.searchParams.set("tomatoes", "true");
+      if (withYear && resolvedYear) u.searchParams.set("y", resolvedYear);
       const ores = await fetch(u.toString());
-      const odata = (await ores.json()) as {
-        Response?: string;
-        Ratings?: { Source: string; Value: string }[];
-        imdbRating?: string;
-        imdbID?: string;
-      };
+      return (await ores.json()) as OmdbJson;
+    };
+
+    try {
+      let odata = await fetchOmdb(true);
+      if (odata.Response !== "True" && resolvedYear) {
+        odata = await fetchOmdb(false);
+      }
+
       if (odata.Response === "True") {
+        omdb = { matched: true, notice: null };
         imdbId = odata.imdbID ?? null;
         const fromApi = odata.Ratings ?? [];
         const seen = new Set<string>();
@@ -185,10 +291,50 @@ export async function GET(request: NextRequest) {
             source: "IMDb",
             value: `${odata.imdbRating}/10`,
           });
+          seen.add("imdb");
         }
+        if (odata.Metascore && odata.Metascore !== "N/A" && !seen.has("metacritic")) {
+          ratings.push({
+            source: "Metacritic",
+            value: `${odata.Metascore}/100`,
+          });
+          seen.add("metacritic");
+        }
+        if (odata.tomatoMeter && odata.tomatoMeter !== "N/A" && !seen.has("rotten tomatoes")) {
+          ratings.push({
+            source: "Rotten Tomatoes",
+            value: `${odata.tomatoMeter}%`,
+          });
+          seen.add("rotten tomatoes");
+        }
+        if (
+          odata.tomatoUserMeter &&
+          odata.tomatoUserMeter !== "N/A" &&
+          !seen.has("rotten tomatoes (audience)")
+        ) {
+          ratings.push({
+            source: "Rotten Tomatoes (audience)",
+            value: `${odata.tomatoUserMeter}%`,
+          });
+          seen.add("rotten tomatoes (audience)");
+        }
+        if (ratings.length === 0) {
+          omdb.notice =
+            "Matched on OMDb—no score rows yet (normal for new/indie). TMDB audience below.";
+        }
+      } else {
+        const err =
+          typeof odata.Error === "string" && odata.Error.trim()
+            ? odata.Error.trim()
+            : "Movie not found!";
+        omdb = { matched: false, notice: err };
       }
     } catch {
       warnings.push("OMDb request failed.");
+      omdb = {
+        matched: false,
+        notice: "OMDb request failed. Check the key and try again.",
+      };
     }
   } else if (!OMDB_KEY) {
     warnings.push(
@@ -197,9 +343,24 @@ export async function GET(request: NextRequest) {
   }
 
   const youtubeReviews: YoutubeReview[] = [];
+  const youtubeMemeClips: YoutubeReview[] = [];
 
   if (YT_KEY && resolvedTitle) {
-    const runSearch = async (q: string) => {
+    type YtSearchItem = {
+      id: { videoId?: string };
+      snippet: {
+        title: string;
+        channelTitle: string;
+        thumbnails?: {
+          medium?: { url: string };
+          default?: { url: string };
+        };
+      };
+    };
+
+    const runSearch = async (
+      q: string,
+    ): Promise<{ items: YtSearchItem[]; apiError?: string }> => {
       const u = new URL("https://www.googleapis.com/youtube/v3/search");
       u.searchParams.set("part", "snippet");
       u.searchParams.set("type", "video");
@@ -207,34 +368,53 @@ export async function GET(request: NextRequest) {
       u.searchParams.set("q", q);
       u.searchParams.set("key", YT_KEY);
       const res = await fetch(u.toString());
-      return (await res.json()) as {
-        items?: {
-          id: { videoId?: string };
-          snippet: {
-            title: string;
-            channelTitle: string;
-            thumbnails?: {
-              medium?: { url: string };
-              default?: { url: string };
-            };
-          };
-        }[];
+      const data = (await res.json()) as {
+        error?: { message?: string };
+        items?: YtSearchItem[];
       };
+      if (!res.ok || data.error) {
+        const msg =
+          data.error?.message ??
+          (!res.ok ? `HTTP ${res.status}` : "YouTube API error");
+        return { items: [], apiError: msg };
+      }
+      return { items: data.items ?? [] };
     };
 
     try {
-      const queries = [
+      let loggedYtApiError = false;
+      let stopYoutubeSearches = false;
+      const noteYtError = (msg: string | undefined) => {
+        if (!msg || loggedYtApiError) return;
+        const plain = stripApiHtmlMessage(msg);
+        const quota = plain.toLowerCase().includes("quota");
+        let line = `YouTube: ${plain}`;
+        if (quota) {
+          line +=
+            " Each search.list call uses about 100 quota units; check usage in Google Cloud → APIs & Services → YouTube Data API v3.";
+        }
+        warnings.push(line);
+        loggedYtApiError = true;
+        stopYoutubeSearches = true;
+      };
+
+      /** Fewer queries = less quota (each search.list ≈ 100 units). */
+      const reviewQueries = [
         `${resolvedTitle} ${resolvedYear} movie review`,
         `${resolvedTitle} review no spoilers`,
-        `Jeremy Jahns ${resolvedTitle}`,
       ];
-      const seen = new Set<string>();
-      for (const q of queries) {
-        const data = await runSearch(q);
-        for (const item of data.items ?? []) {
+      const seenReviews = new Set<string>();
+      for (const q of reviewQueries) {
+        if (stopYoutubeSearches) break;
+        const { items, apiError } = await runSearch(q);
+        if (apiError) {
+          noteYtError(apiError);
+          break;
+        }
+        for (const item of items) {
           const vid = item.id.videoId;
-          if (!vid || seen.has(vid)) continue;
-          seen.add(vid);
+          if (!vid || seenReviews.has(vid)) continue;
+          seenReviews.add(vid);
           youtubeReviews.push({
             videoId: vid,
             title: item.snippet.title,
@@ -248,15 +428,51 @@ export async function GET(request: NextRequest) {
         }
         if (youtubeReviews.length >= 12) break;
       }
+
+      const excludeClipIds = new Set(youtubeReviews.map((v) => v.videoId));
+      const memeQueries = [
+        `${resolvedTitle} ${resolvedYear} movie meme scene`,
+        `${resolvedTitle} iconic scene movie`,
+      ];
+      const seenMemes = new Set<string>();
+      for (const q of memeQueries) {
+        if (stopYoutubeSearches) break;
+        const { items, apiError } = await runSearch(q);
+        if (apiError) {
+          noteYtError(apiError);
+          break;
+        }
+        for (const item of items) {
+          const vid = item.id.videoId;
+          if (!vid || excludeClipIds.has(vid) || seenMemes.has(vid)) continue;
+          seenMemes.add(vid);
+          youtubeMemeClips.push({
+            videoId: vid,
+            title: item.snippet.title,
+            channelTitle: item.snippet.channelTitle,
+            thumbnail:
+              item.snippet.thumbnails?.medium?.url ??
+              item.snippet.thumbnails?.default?.url ??
+              null,
+          });
+          if (youtubeMemeClips.length >= 10) break;
+        }
+        if (youtubeMemeClips.length >= 10) break;
+      }
     } catch {
       warnings.push("YouTube API request failed.");
     }
-  } else {
-    warnings.push("Set YOUTUBE_API_KEY for embedded review suggestions.");
+  } else if (!YT_KEY) {
+    warnings.push(
+      "Set YOUTUBE_API_KEY (server env) for embedded YouTube picks. You can also use YOUTUBE_DATA_API_KEY or GOOGLE_API_KEY.",
+    );
   }
 
   const fallbackYoutubeSearchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(
     `${resolvedTitle} ${resolvedYear} movie review`,
+  )}`;
+  const fallbackYoutubeMemeSearchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(
+    `${resolvedTitle} ${resolvedYear} meme movie scene`,
   )}`;
 
   const body: MovieEnrichResponse = {
@@ -265,13 +481,22 @@ export async function GET(request: NextRequest) {
     title: resolvedTitle,
     year: resolvedYear,
     overview,
+    tmdbVoteAverage,
+    tmdbVoteCount,
+    tmdbGenres,
+    runtimeMinutes,
     ratings,
     imdbId,
     streaming,
     youtubeReviews,
+    youtubeMemeClips,
     fallbackYoutubeSearchUrl,
+    fallbackYoutubeMemeSearchUrl,
     trailerYoutubeKey,
+    tmdbBackdropUrl,
+    tmdbCast,
     warnings,
+    omdb,
   };
 
   return NextResponse.json(body);

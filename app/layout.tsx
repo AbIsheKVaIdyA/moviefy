@@ -1,21 +1,27 @@
 import type { Metadata } from "next";
-import { Fraunces, Geist, Geist_Mono } from "next/font/google";
+import { Geist_Mono, Space_Grotesk, Syne } from "next/font/google";
+import { SupabaseAppProvider } from "@/components/supabase-app-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const sans = Space_Grotesk({
+  variable: "--font-space-grotesk",
   subsets: ["latin"],
+  display: "swap",
+  weight: ["400", "500", "600", "700"],
 });
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+  display: "swap",
 });
 
-const fraunces = Fraunces({
-  variable: "--font-fraunces",
+const heading = Syne({
+  variable: "--font-syne",
   subsets: ["latin"],
+  display: "swap",
+  weight: ["600", "700", "800"],
 });
 
 export const metadata: Metadata = {
@@ -32,11 +38,13 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`dark ${geistSans.variable} ${geistMono.variable} ${fraunces.variable} h-full antialiased`}
+      className={`dark ${sans.variable} ${geistMono.variable} ${heading.variable} h-full antialiased`}
       suppressHydrationWarning
     >
-      <body className="min-h-dvh flex flex-col">
-        <TooltipProvider>{children}</TooltipProvider>
+      <body className="app-body-skin flex min-h-dvh flex-col text-foreground">
+        <SupabaseAppProvider>
+          <TooltipProvider>{children}</TooltipProvider>
+        </SupabaseAppProvider>
       </body>
     </html>
   );

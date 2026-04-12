@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { TmdbDiscoverResponse } from "@/lib/movie-enrich-types";
 
+export const runtime = "nodejs";
+
 const TMDB_KEY = process.env.TMDB_API_KEY;
 
 const ALLOWED_SORT = new Set([

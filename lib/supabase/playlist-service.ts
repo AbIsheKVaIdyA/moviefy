@@ -13,16 +13,6 @@ type MovieRow = Parameters<typeof movieRowToMovie>[0];
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-export async function ensureAnonymousSession(client: SupabaseClient) {
-  const {
-    data: { session },
-  } = await client.auth.getSession();
-  if (session) return session;
-  const { data, error } = await client.auth.signInAnonymously();
-  if (error) throw error;
-  return data.session;
-}
-
 /** Persist TMDB-backed or existing rows; returns `movies.id` (uuid). */
 export async function ensureMovieRow(
   client: SupabaseClient,
@@ -132,7 +122,9 @@ export async function fetchPublicCommunityPlaylists(
 ): Promise<CommunityPlaylist[]> {
   const { data: playlists, error } = await client
     .from("playlists")
-    .select("id, name, description, is_public, kind, follower_count, user_id")
+    .select(
+      "id, name, description, is_public, kind, follower_count, like_count, user_id",
+    )
     .eq("is_public", true)
     .order("created_at", { ascending: false })
     .limit(48);
@@ -173,6 +165,7 @@ export async function fetchPublicCommunityPlaylists(
           }
         : null,
       Number(p.follower_count ?? 0),
+      Number((p as { like_count?: number | null }).like_count ?? 0),
     );
   });
 }
@@ -249,6 +242,45 @@ export async function addMovieToPlaylistDb(
   });
 
   return !error;
+}
+
+/** Same title in a playlist row vs detail `Movie` (TMDB / id variants). */
+export function movieMatchesInPlaylistRow(row: Movie, movie: Movie): boolean {
+  if (row.id === movie.id) return true;
+  const a = row.tmdbId ?? (row.id.startsWith("tmdb-") ? Number(row.id.slice(5)) : NaN);
+  const b = movie.tmdbId ?? (movie.id.startsWith("tmdb-") ? Number(movie.id.slice(5)) : NaN);
+  if (Number.isFinite(a) && Number.isFinite(b) && a === b) return true;
+  return false;
+}
+
+export async function removeMovieFromPlaylistDb(
+  client: SupabaseClient,
+  playlistId: string,
+  movie: Movie,
+): Promise<boolean> {
+  const movieId = await ensureMovieRow(client, movie);
+  if (!movieId) return false;
+  const { error } = await client
+    .from("playlist_items")
+    .delete()
+    .eq("playlist_id", playlistId)
+    .eq("movie_id", movieId);
+  return !error;
+}
+
+/** First watched-log list, or a new private “Watched” playlist. */
+export async function getOrCreatePrimaryWatchedPlaylist(
+  client: SupabaseClient,
+  userId: string,
+): Promise<Playlist | null> {
+  const all = await fetchUserPlaylists(client, userId);
+  const watched = all.find((p) => p.kind === "watched");
+  if (watched) return watched;
+  return createPlaylist(client, userId, {
+    name: "Watched",
+    description: "Films you've marked as seen.",
+    kind: "watched",
+  });
 }
 
 export async function reorderPlaylistMoviesDb(
@@ -370,6 +402,36 @@ export async function clonePublicPlaylistForUser(
 }
 
 /** UUIDs plus `tmdb-{id}` aliases so TMDB discover picks match saved rows. */
+/** Saved films for the library “Saved” view (newest first). */
+export async function fetchSavedMoviesForUser(
+  client: SupabaseClient,
+  userId: string,
+): Promise<Movie[]> {
+  const { data: links, error } = await client
+    .from("saved_movies")
+    .select("movie_id, created_at")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false });
+
+  if (error || !links?.length) return [];
+
+  const ids = links.map((r) => r.movie_id as string);
+  const { data: rows } = await client
+    .from("movies")
+    .select("*")
+    .in("id", ids);
+
+  const byId = new Map(
+    (rows ?? []).map((r) => [
+      r.id as string,
+      movieRowToMovie(r as unknown as MovieRow),
+    ]),
+  );
+  return ids
+    .map((id) => byId.get(id))
+    .filter((m): m is Movie => m != null);
+}
+
 export async function fetchSavedMovieKeys(
   client: SupabaseClient,
   userId: string,
@@ -440,6 +502,39 @@ export async function setPlaylistFollowedDb(
   }
   const { error } = await client
     .from("playlist_follows")
+    .delete()
+    .eq("user_id", userId)
+    .eq("playlist_id", playlistId);
+  return !error;
+}
+
+export async function fetchLikedPlaylistIds(
+  client: SupabaseClient,
+  userId: string,
+): Promise<Set<string>> {
+  const { data } = await client
+    .from("playlist_likes")
+    .select("playlist_id")
+    .eq("user_id", userId);
+
+  return new Set((data ?? []).map((r) => r.playlist_id as string));
+}
+
+export async function setPlaylistLikedDb(
+  client: SupabaseClient,
+  userId: string,
+  playlistId: string,
+  liked: boolean,
+): Promise<boolean> {
+  if (liked) {
+    const { error } = await client.from("playlist_likes").upsert(
+      { user_id: userId, playlist_id: playlistId },
+      { onConflict: "user_id,playlist_id" },
+    );
+    return !error;
+  }
+  const { error } = await client
+    .from("playlist_likes")
     .delete()
     .eq("user_id", userId)
     .eq("playlist_id", playlistId);

@@ -63,10 +63,6 @@ export function TmdbDiscoverSection({ selectedMovieId, onSelectMovie }: Props) {
       <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="font-heading text-xl">TMDB top picks</h2>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Discover from The Movie Database; sort by score, popularity, or
-            release date. Add API keys to unlock full insights for any title.
-          </p>
         </div>
         <div className="flex flex-wrap items-end gap-3">
           <div className="grid gap-1">
@@ -75,12 +71,15 @@ export function TmdbDiscoverSection({ selectedMovieId, onSelectMovie }: Props) {
             </Label>
             <Select
               value={sort}
-              onValueChange={(v) =>
-                setSort((v ?? sort) as (typeof SORT_OPTIONS)[number]["value"])
-              }
+              onValueChange={(v) => {
+                const next = SORT_OPTIONS.find((o) => o.value === v)?.value;
+                if (next) setSort(next);
+              }}
             >
               <SelectTrigger className="h-8 w-[200px] border-white/10 bg-[#252525] text-xs">
-                <SelectValue />
+                <SelectValue>
+                  {SORT_OPTIONS.find((o) => o.value === sort)?.label ?? "Sort"}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {SORT_OPTIONS.map((o) => (
@@ -95,9 +94,16 @@ export function TmdbDiscoverSection({ selectedMovieId, onSelectMovie }: Props) {
             <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">
               Min votes
             </Label>
-            <Select value={minVotes} onValueChange={(v) => setMinVotes(v ?? "250")}>
+            <Select
+              value={minVotes}
+              onValueChange={(v) => {
+                if (v === "100" || v === "250" || v === "500" || v === "1000") {
+                  setMinVotes(v);
+                }
+              }}
+            >
               <SelectTrigger className="h-8 w-[120px] border-white/10 bg-[#252525] text-xs">
-                <SelectValue />
+                <SelectValue>{`${minVotes}+`}</SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="100">100+</SelectItem>

@@ -69,6 +69,7 @@ export function toCommunityPlaylist(
   movies: PlaylistMovie[],
   profile: ProfileRow | null,
   followerCount: number,
+  likeCount: number,
 ): CommunityPlaylist {
   return {
     ...toPlaylist(p, movies),
@@ -80,5 +81,6 @@ export function toCommunityPlaylist(
         : `@${profile.handle}`
       : "",
     followerCount,
+    likeCount,
   };
 }
