@@ -160,7 +160,7 @@ export default function TmdbMoviePage() {
       />
       {toastMsg ? (
         <div
-          className="fixed bottom-6 left-1/2 z-[200] -translate-x-1/2 rounded-full border border-white/10 bg-zinc-900 px-4 py-2 text-sm text-white shadow-lg"
+          className="fixed left-1/2 z-[200] max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-full border border-white/10 bg-zinc-900 px-4 py-2.5 text-center text-sm text-white shadow-lg [bottom:max(1.25rem,calc(0.75rem+env(safe-area-inset-bottom)))]"
           role="status"
         >
           {toastMsg}

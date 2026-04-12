@@ -166,7 +166,7 @@ export function LandingAuthModal() {
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
-          className="max-h-[min(90dvh,640px)] overflow-y-auto border-white/10 bg-zinc-950 text-white sm:max-w-md"
+          className="max-h-[min(90dvh,640px,calc(100dvh_-_2rem_-_env(safe-area-inset-top)_-_env(safe-area-inset-bottom)))] w-[min(100%,calc(100vw-1.5rem))] overflow-y-auto overscroll-y-contain border-white/10 bg-zinc-950 text-white sm:max-w-md"
           backdropClassName="bg-black/70 backdrop-blur-sm"
         >
           <DialogHeader>
@@ -189,7 +189,7 @@ export function LandingAuthModal() {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-h-[min(90dvh,640px)] overflow-y-auto border-white/10 bg-zinc-950 text-white sm:max-w-md"
+        className="max-h-[min(90dvh,640px,calc(100dvh_-_2rem_-_env(safe-area-inset-top)_-_env(safe-area-inset-bottom)))] w-[min(100%,calc(100vw-1.5rem))] overflow-y-auto overscroll-y-contain border-white/10 bg-zinc-950 text-white sm:max-w-md"
         backdropClassName="bg-black/70 backdrop-blur-sm"
       >
         {!ready || !client ? (

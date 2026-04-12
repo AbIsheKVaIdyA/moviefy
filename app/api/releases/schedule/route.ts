@@ -5,6 +5,8 @@ import type {
   ScheduleResponse,
   ScheduleWindow,
 } from "@/lib/releases-schedule-types";
+import { GENRES, type Genre } from "@/lib/types";
+import { tmdbGenreIdFor } from "@/lib/tmdb-genre-ids";
 
 export const runtime = "nodejs";
 
@@ -36,6 +38,24 @@ function parseFilter(f: string | null): "all" | ScheduleMedia {
   return "all";
 }
 
+function parseGenreParam(s: string | null): number | undefined {
+  const t = s?.trim();
+  if (!t || t === "all") return undefined;
+  if (!(GENRES as readonly string[]).includes(t)) return undefined;
+  return tmdbGenreIdFor(t as Genre);
+}
+
+function parseLangParam(s: string | null): string | undefined {
+  const t = s?.trim().toLowerCase();
+  if (!t || t === "all" || t.length !== 2) return undefined;
+  return t;
+}
+
+type DiscoverExtra = {
+  withGenres?: number;
+  originalLanguage?: string;
+};
+
 type TmdbMovieRow = {
   id: number;
   title: string;
@@ -62,6 +82,7 @@ async function discoverMovies(
   gte: string,
   lte: string,
   maxPages: number,
+  extra?: DiscoverExtra,
 ): Promise<TmdbMovieRow[]> {
   if (!TMDB_KEY) return [];
   const out: TmdbMovieRow[] = [];
@@ -76,6 +97,12 @@ async function discoverMovies(
     u.searchParams.set("primary_release_date.gte", gte);
     u.searchParams.set("primary_release_date.lte", lte);
     u.searchParams.set("region", "US");
+    if (extra?.withGenres != null) {
+      u.searchParams.set("with_genres", String(extra.withGenres));
+    }
+    if (extra?.originalLanguage) {
+      u.searchParams.set("with_original_language", extra.originalLanguage);
+    }
     const res = await fetch(u.toString());
     if (!res.ok) break;
     const json = (await res.json()) as { results?: TmdbMovieRow[] };
@@ -90,6 +117,7 @@ async function discoverTv(
   gte: string,
   lte: string,
   maxPages: number,
+  extra?: DiscoverExtra,
 ): Promise<TmdbTvRow[]> {
   if (!TMDB_KEY) return [];
   const out: TmdbTvRow[] = [];
@@ -102,6 +130,12 @@ async function discoverTv(
     u.searchParams.set("page", String(page));
     u.searchParams.set("first_air_date.gte", gte);
     u.searchParams.set("first_air_date.lte", lte);
+    if (extra?.withGenres != null) {
+      u.searchParams.set("with_genres", String(extra.withGenres));
+    }
+    if (extra?.originalLanguage) {
+      u.searchParams.set("with_original_language", extra.originalLanguage);
+    }
     const res = await fetch(u.toString());
     if (!res.ok) break;
     const json = (await res.json()) as { results?: TmdbTvRow[] };
@@ -156,6 +190,15 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const window = parseWindow(searchParams.get("window"));
   const filter = parseFilter(searchParams.get("type"));
+  const genreId = parseGenreParam(searchParams.get("genre"));
+  const originalLanguage = parseLangParam(searchParams.get("lang"));
+  const discoverExtra: DiscoverExtra | undefined =
+    genreId != null || originalLanguage
+      ? {
+          ...(genreId != null ? { withGenres: genreId } : {}),
+          ...(originalLanguage ? { originalLanguage } : {}),
+        }
+      : undefined;
 
   if (!TMDB_KEY) {
     const empty: ScheduleResponse = {
@@ -192,8 +235,10 @@ export async function GET(request: NextRequest) {
     const pages = window === "announced" ? 4 : 3;
 
     const [moviesRaw, tvRaw] = await Promise.all([
-      wantMovies ? discoverMovies(gte, lte, pages) : Promise.resolve([]),
-      wantTv ? discoverTv(gte, lte, pages) : Promise.resolve([]),
+      wantMovies
+        ? discoverMovies(gte, lte, pages, discoverExtra)
+        : Promise.resolve([]),
+      wantTv ? discoverTv(gte, lte, pages, discoverExtra) : Promise.resolve([]),
     ]);
 
     const items: ScheduleItem[] = [];

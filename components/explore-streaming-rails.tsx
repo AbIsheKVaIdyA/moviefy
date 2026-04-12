@@ -64,15 +64,18 @@ function RailHeader({
 function CarouselRail({
   rail,
   onSelectMovie,
+  sectionId,
 }: {
   rail: StreamingHighlightRail;
   onSelectMovie: (m: Movie) => void;
+  sectionId?: string;
 }) {
   const a = ACCENT[rail.accent];
   return (
     <div
+      id={sectionId}
       className={cn(
-        "rounded-2xl border border-border/70 bg-card/90 p-3 shadow-[var(--app-shadow-card)] sm:p-4",
+        "scroll-mt-28 rounded-2xl border border-border/70 bg-card/90 p-3 shadow-[var(--app-shadow-card)] sm:p-4",
         a.glow,
       )}
     >
@@ -118,9 +121,11 @@ function CarouselRail({
 function HeroSplitRail({
   rail,
   onSelectMovie,
+  sectionId,
 }: {
   rail: StreamingHighlightRail;
   onSelectMovie: (m: Movie) => void;
+  sectionId?: string;
 }) {
   const a = ACCENT[rail.accent];
   const [first, ...rest] = rail.results;
@@ -128,7 +133,10 @@ function HeroSplitRail({
   const hero = movieFromTmdbDiscoverItem(first);
   const side = rest.slice(0, 4);
   return (
-    <div className="rounded-2xl border border-border/70 bg-card/80 p-4 shadow-[var(--app-shadow-card)] sm:p-5">
+    <div
+      id={sectionId}
+      className="scroll-mt-28 rounded-2xl border border-border/70 bg-card/80 p-4 shadow-[var(--app-shadow-card)] sm:p-5"
+    >
       <RailHeader label={rail.label} accent={rail.accent} />
       <div className="flex flex-col gap-4 lg:flex-row lg:items-stretch">
         <button
@@ -208,12 +216,17 @@ function HeroSplitRail({
 function TightStripRail({
   rail,
   onSelectMovie,
+  sectionId,
 }: {
   rail: StreamingHighlightRail;
   onSelectMovie: (m: Movie) => void;
+  sectionId?: string;
 }) {
   return (
-    <div className="rounded-2xl border border-dashed border-border/60 bg-muted/15 px-3 py-4 sm:px-5">
+    <div
+      id={sectionId}
+      className="scroll-mt-28 rounded-2xl border border-dashed border-border/60 bg-muted/15 px-3 py-4 sm:px-5"
+    >
       <RailHeader label={rail.label} accent={rail.accent} />
       <div className="flex gap-2 overflow-x-auto pb-1 pt-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {rail.results.map((item) => {
@@ -254,13 +267,18 @@ function TightStripRail({
 function PosterGridRail({
   rail,
   onSelectMovie,
+  sectionId,
 }: {
   rail: StreamingHighlightRail;
   onSelectMovie: (m: Movie) => void;
+  sectionId?: string;
 }) {
   const slice = rail.results.slice(0, 8);
   return (
-    <div className="rounded-2xl border border-border/70 bg-gradient-to-br from-card via-card/90 to-muted/20 p-4 shadow-[var(--app-shadow-card)] sm:p-6">
+    <div
+      id={sectionId}
+      className="scroll-mt-28 rounded-2xl border border-border/70 bg-gradient-to-br from-card via-card/90 to-muted/20 p-4 shadow-[var(--app-shadow-card)] sm:p-6"
+    >
       <RailHeader label={rail.label} accent={rail.accent} />
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
         {slice.map((item) => {
@@ -334,15 +352,17 @@ export function ExploreStreamingRails({ onSelectMovie }: Props) {
   }
 
   return (
-    <div className="space-y-12">
+    <div id="explore-section-streaming" className="scroll-mt-28 space-y-12">
       {rails.map((rail, i) => {
         if (!rail.results.length) return null;
         const variant = i % 4;
+        const sectionId = `explore-stream-${rail.id}`;
         if (variant === 0) {
           return (
             <CarouselRail
               key={rail.id}
               rail={rail}
+              sectionId={sectionId}
               onSelectMovie={onSelectMovie}
             />
           );
@@ -352,6 +372,7 @@ export function ExploreStreamingRails({ onSelectMovie }: Props) {
             <HeroSplitRail
               key={rail.id}
               rail={rail}
+              sectionId={sectionId}
               onSelectMovie={onSelectMovie}
             />
           );
@@ -361,6 +382,7 @@ export function ExploreStreamingRails({ onSelectMovie }: Props) {
             <TightStripRail
               key={rail.id}
               rail={rail}
+              sectionId={sectionId}
               onSelectMovie={onSelectMovie}
             />
           );
@@ -369,6 +391,7 @@ export function ExploreStreamingRails({ onSelectMovie }: Props) {
           <PosterGridRail
             key={rail.id}
             rail={rail}
+            sectionId={sectionId}
             onSelectMovie={onSelectMovie}
           />
         );

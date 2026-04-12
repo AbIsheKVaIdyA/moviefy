@@ -84,6 +84,10 @@ import { movieFromTmdbDiscoverItem } from "@/lib/tmdb-genre-map";
 import { tmdbGenreLabels } from "@/lib/tmdb-genre-labels";
 import { cn } from "@/lib/utils";
 import { SearchSuggestDropdown } from "@/components/search-suggest-dropdown";
+import { ExploreJumpNav, type ExploreJumpLink } from "@/components/explore-jump-nav";
+import { ExploreSpotlightRails } from "@/components/explore-spotlight-rails";
+import { clearExploreRecentLocal } from "@/lib/explore-recent-storage";
+import { clearAllExploreRecentOpens } from "@/lib/supabase/explore-recent-service";
 
 const WATCHLIST_SESSION_CACHE_PREFIX = "moviefy_explore_watchlist_v1_";
 
@@ -128,7 +132,7 @@ function CommunityPlaylistCard({
 }) {
   const cover = item.movies[0];
   return (
-    <div className="group flex w-[280px] shrink-0 flex-col overflow-hidden rounded-2xl border border-border/70 bg-card text-card-foreground shadow-[var(--app-shadow-card)] transition hover:border-border hover:shadow-[var(--app-shadow-card)] sm:w-[300px]">
+    <div className="group flex w-[min(280px,calc(100vw-2.5rem))] max-w-[min(300px,calc(100vw-1.5rem))] shrink-0 flex-col overflow-hidden rounded-2xl border border-border/70 bg-card text-card-foreground shadow-[var(--app-shadow-card)] transition hover:border-border hover:shadow-[var(--app-shadow-card)] sm:w-[300px] sm:max-w-none">
       <div className="relative aspect-[16/10] overflow-hidden bg-zinc-900">
         {cover ? (
           <PosterImage
@@ -172,7 +176,7 @@ function CommunityPlaylistCard({
             size="sm"
             variant={liked ? "secondary" : "outline"}
             className={cn(
-              "h-8 shrink-0 border-border/80 px-3 text-xs",
+              "h-10 min-w-10 shrink-0 border-border/80 px-3 text-xs sm:h-8 sm:min-w-0",
               liked && "border-transparent text-rose-200",
             )}
             title={liked ? "Unlike" : "Like"}
@@ -189,7 +193,7 @@ function CommunityPlaylistCard({
             size="sm"
             variant={following ? "secondary" : "outline"}
             className={cn(
-              "h-8 min-w-0 flex-1 border-border/80 text-xs",
+              "h-10 min-h-10 min-w-0 flex-1 border-border/80 text-xs sm:h-8 sm:min-h-0",
               following && "border-transparent",
             )}
             onClick={() => {
@@ -203,7 +207,7 @@ function CommunityPlaylistCard({
             type="button"
             size="sm"
             variant="default"
-            className="h-8 min-w-0 flex-1 text-xs"
+            className="h-10 min-h-10 min-w-0 flex-1 text-xs sm:h-8 sm:min-h-0"
             onClick={() => {
               void onSaveToLibrary();
             }}
@@ -267,6 +271,20 @@ export function ExplorePage() {
   } | null>(null);
 
   const toast = useCallback((m: string) => setToastMsg(m), []);
+
+  const clearExploreRecent = useCallback(async () => {
+    clearExploreRecentLocal();
+    if (client && session?.user) {
+      const ok = await clearAllExploreRecentOpens(client, session.user.id);
+      if (!ok) {
+        toast("Could not clear server history — device list was cleared.");
+      } else {
+        setServerExploreRecentOpens([]);
+      }
+    }
+    setExploreLsTick((n) => n + 1);
+    toast("Recently viewed cleared");
+  }, [client, session, toast]);
 
   useEffect(() => {
     if (!toastMsg) return;
@@ -520,6 +538,32 @@ export function ExplorePage() {
     [communityPlaylists, followedIds],
   );
 
+  const exploreJumpLinks = useMemo<ExploreJumpLink[]>(() => {
+    const links: ExploreJumpLink[] = [];
+    if (castPerson) {
+      links.push({ id: "explore-section-cast", label: "Cast picks" });
+    }
+    links.push(
+      { id: "explore-section-watchlist", label: "Watchlist" },
+      { id: "explore-section-recent", label: "Recent" },
+      { id: "explore-section-moods", label: "Moods" },
+      { id: "explore-section-spotlights", label: "Awards · ≤90m" },
+      { id: "explore-section-buzzing", label: "Buzzing" },
+      { id: "explore-stream-netflix", label: "Netflix" },
+      { id: "explore-stream-prime", label: "Prime" },
+      { id: "explore-stream-hulu", label: "Hulu" },
+      { id: "explore-stream-disney", label: "Disney+" },
+      { id: "explore-section-meme", label: "Meme hall" },
+      { id: "explore-browse-genre", label: "Genres" },
+      { id: "explore-section-editor-picks", label: "TMDB picks" },
+    );
+    if (followedPlaylists.length) {
+      links.push({ id: "explore-section-followed", label: "Following" });
+    }
+    links.push({ id: "explore-public-playlists", label: "Playlists" });
+    return links;
+  }, [castPerson?.id, followedPlaylists.length]);
+
   const mergedExploreRecentMovies = useMemo(
     () =>
       mergeExploreRecentMovies(
@@ -640,12 +684,12 @@ export function ExplorePage() {
 
   return (
     <div className="min-h-dvh text-foreground motion-safe:transition-opacity motion-safe:duration-200">
-      <header className="sticky top-0 z-30 border-b border-border/60 bg-card/45 backdrop-blur-xl supports-[backdrop-filter]:bg-card/35">
-        <div className="mx-auto flex max-w-[1400px] items-center justify-between gap-3 px-4 py-3 sm:px-5">
+      <header className="sticky top-0 z-30 border-b border-border/60 bg-card/45 pt-[env(safe-area-inset-top,0px)] backdrop-blur-xl supports-[backdrop-filter]:bg-card/35">
+        <div className="mx-auto flex max-w-[1400px] items-center justify-between gap-3 px-3 py-3 sm:px-5">
           <div className="flex items-center gap-3">
             <Link
               href="/app"
-              className="flex items-center gap-2 rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-sm text-foreground/90 transition hover:bg-muted/50"
+              className="flex min-h-10 items-center gap-2 rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-sm text-foreground/90 transition hover:bg-muted/50"
             >
               <ArrowLeft className="size-4" />
               <span className="hidden sm:inline">Your theatre</span>
@@ -663,7 +707,9 @@ export function ExplorePage() {
           <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
             <Link
               href="/app/releases"
-              className="inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition hover:bg-muted/40 hover:text-foreground"
+              aria-label="Release radar"
+              title="Release radar"
+              className="inline-flex min-h-10 items-center gap-1.5 rounded-md px-2.5 py-2 text-sm text-muted-foreground transition hover:bg-muted/40 hover:text-foreground"
             >
               <CalendarDays className="size-4 shrink-0" />
               <span className="hidden sm:inline">Release radar</span>
@@ -695,8 +741,8 @@ export function ExplorePage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-[1500px] px-4 py-10 sm:px-6 sm:py-14">
-        <section className="relative z-[25] rounded-3xl border border-sky-500/20 bg-gradient-to-br from-sky-950/50 via-emerald-950/25 to-red-950/35 p-6 pb-8 shadow-[var(--app-shadow-card)] sm:p-10 sm:pb-10">
+      <main className="mx-auto max-w-[1500px] px-3 py-8 pb-[max(2rem,calc(1.25rem+env(safe-area-inset-bottom)))] sm:px-6 sm:py-14 sm:pb-14">
+        <section className="relative z-[25] rounded-3xl border border-sky-500/20 bg-gradient-to-br from-sky-950/50 via-emerald-950/25 to-red-950/35 p-4 pb-7 shadow-[var(--app-shadow-card)] sm:p-10 sm:pb-10">
           {/* Clip only glows — search dropdown must not be clipped by overflow-hidden */}
           <div
             className="pointer-events-none absolute inset-0 overflow-hidden rounded-3xl"
@@ -775,8 +821,13 @@ export function ExplorePage() {
         </section>
 
         <div className="relative z-0">
+        <ExploreJumpNav links={exploreJumpLinks} />
+
         {castPerson ? (
-          <section className="mt-12 rounded-2xl border border-violet-400/30 bg-violet-950/20 p-5 shadow-[var(--app-shadow-card)] sm:p-6">
+          <section
+            id="explore-section-cast"
+            className="mt-12 scroll-mt-28 rounded-2xl border border-violet-400/30 bg-violet-950/20 p-5 shadow-[var(--app-shadow-card)] sm:p-6"
+          >
             <div className="mb-3.5 flex flex-wrap items-center justify-between gap-2">
               <div>
                 <h2 className="type-section-title">With {castPerson.name}</h2>
@@ -803,19 +854,25 @@ export function ExplorePage() {
           </section>
         ) : null}
 
-        <div className="mt-12 lg:grid lg:grid-cols-[minmax(0,1fr)_min(100%,320px)] lg:items-start lg:gap-10 xl:grid-cols-[minmax(0,1fr)_340px]">
-          <div className="min-w-0 space-y-14">
+        <div className="mt-10 flex flex-col gap-10 lg:mt-12 lg:grid lg:grid-cols-[minmax(0,1fr)_min(100%,320px)] lg:items-start lg:gap-10 xl:grid-cols-[minmax(0,1fr)_340px]">
+          <div className="order-2 min-w-0 space-y-14 lg:order-1">
         <ExplorePersonalRails
           watchlistMovies={watchlistMovies}
           watchlistLoading={watchlistLoading}
           recentMovies={mergedExploreRecentMovies}
           recentLoading={exploreRecentLoading}
           onSelectMovie={selectMovie}
+          onClearRecent={clearExploreRecent}
+          canClearRecent={mergedExploreRecentMovies.length > 0}
         />
 
-        <ExploreCuratedMoods onSelectMovie={selectMovie} />
+        <div id="explore-section-moods" className="scroll-mt-28">
+          <ExploreCuratedMoods onSelectMovie={selectMovie} />
+        </div>
 
-        <section>
+        <ExploreSpotlightRails onSelectMovie={selectMovie} />
+
+        <section id="explore-section-buzzing" className="scroll-mt-28">
           <div className="mb-3.5 flex flex-wrap items-center gap-2.5">
             <Megaphone className="size-5 shrink-0 text-sky-400" aria-hidden />
             <div>
@@ -912,7 +969,7 @@ export function ExplorePage() {
           <ExploreStreamingRails onSelectMovie={selectMovie} />
         </section>
 
-        <section>
+        <section id="explore-section-meme" className="scroll-mt-28">
           <div className="mb-3.5 flex flex-wrap items-center gap-2.5">
             <Laugh className="size-5 shrink-0 text-amber-400" aria-hidden />
             <div>
@@ -974,7 +1031,7 @@ export function ExplorePage() {
           </div>
         </section>
 
-        <section id="explore-browse-genre">
+        <section id="explore-browse-genre" className="scroll-mt-28">
           <div className="mb-3.5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <h2 className="type-section-title">Browse by genre</h2>
@@ -1102,11 +1159,15 @@ export function ExplorePage() {
         </section>
 
         <section className="app-panel p-4 sm:p-6">
-          <TmdbDiscoverSection selectedMovieId={null} onSelectMovie={selectMovie} />
+          <TmdbDiscoverSection
+            sectionId="explore-section-editor-picks"
+            selectedMovieId={null}
+            onSelectMovie={selectMovie}
+          />
         </section>
 
         {followedPlaylists.length > 0 ? (
-          <section>
+          <section id="explore-section-followed" className="scroll-mt-28">
             <h2 className="type-section-title">Creators you follow</h2>
             <div className="mt-3.5 flex gap-4 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {followedPlaylists.map((p) => (
@@ -1136,7 +1197,7 @@ export function ExplorePage() {
           </section>
         ) : null}
 
-        <section id="explore-public-playlists">
+        <section id="explore-public-playlists" className="scroll-mt-28">
           <h2 className="type-section-title">Public playlists</h2>
           <ScrollArea className="mt-3.5 w-full">
             <div className="flex w-max gap-4 pb-2">
@@ -1179,7 +1240,7 @@ export function ExplorePage() {
           </ScrollArea>
         </section>
           </div>
-          <div className="mt-12 w-full shrink-0 lg:mt-0 lg:sticky lg:top-[5.25rem] lg:self-start">
+          <div className="order-1 mt-0 w-full shrink-0 lg:order-2 lg:mt-0 lg:sticky lg:top-[calc(5.25rem+env(safe-area-inset-top,0px))] lg:self-start">
             <ExploreTop10Sidebar
               loading={topChartLoading}
               items={topChartItems}
@@ -1194,7 +1255,7 @@ export function ExplorePage() {
 
       {toastMsg ? (
         <div
-          className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-full border border-border/70 bg-popover px-4 py-2 text-sm text-popover-foreground shadow-[var(--app-shadow-card)]"
+          className="fixed left-1/2 z-50 max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-full border border-border/70 bg-popover px-4 py-2.5 text-center text-sm text-popover-foreground shadow-[var(--app-shadow-card)] [bottom:max(1.25rem,calc(0.75rem+env(safe-area-inset-bottom)))]"
           role="status"
         >
           {toastMsg}

@@ -25,9 +25,14 @@ const SORT_OPTIONS = [
 type Props = {
   selectedMovieId: string | null;
   onSelectMovie: (movie: Movie) => void;
+  sectionId?: string;
 };
 
-export function TmdbDiscoverSection({ selectedMovieId, onSelectMovie }: Props) {
+export function TmdbDiscoverSection({
+  selectedMovieId,
+  onSelectMovie,
+  sectionId = "explore-section-editor-picks",
+}: Props) {
   const [sort, setSort] =
     useState<(typeof SORT_OPTIONS)[number]["value"]>("vote_average.desc");
   const [minVotes, setMinVotes] = useState("250");
@@ -59,7 +64,7 @@ export function TmdbDiscoverSection({ selectedMovieId, onSelectMovie }: Props) {
   }, [load]);
 
   return (
-    <section>
+    <section id={sectionId} className="scroll-mt-28">
       <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="font-heading text-xl">TMDB top picks</h2>

@@ -51,3 +51,14 @@ export async function upsertExploreRecentOpen(
     { onConflict: "user_id,movie_id" },
   );
 }
+
+export async function clearAllExploreRecentOpens(
+  client: SupabaseClient,
+  userId: string,
+): Promise<boolean> {
+  const { error } = await client
+    .from("explore_recent_opens")
+    .delete()
+    .eq("user_id", userId);
+  return !error;
+}

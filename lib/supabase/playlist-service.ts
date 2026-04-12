@@ -220,6 +220,29 @@ export async function updatePlaylistMeta(
   return !error;
 }
 
+/** Deletes all items then the playlist row (cascades follows/likes). Owner-only via RLS. */
+export async function deletePlaylistDb(
+  client: SupabaseClient,
+  userId: string,
+  playlistId: string,
+): Promise<boolean> {
+  const { data: row, error: selErr } = await client
+    .from("playlists")
+    .select("id")
+    .eq("id", playlistId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (selErr || !row) return false;
+
+  await client.from("playlist_items").delete().eq("playlist_id", playlistId);
+  const { error } = await client
+    .from("playlists")
+    .delete()
+    .eq("id", playlistId)
+    .eq("user_id", userId);
+  return !error;
+}
+
 export async function addMovieToPlaylistDb(
   client: SupabaseClient,
   playlistId: string,

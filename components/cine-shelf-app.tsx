@@ -23,6 +23,8 @@ import {
   Lock,
   Plus,
   Search,
+  Trash2,
+  MoreVertical,
   X,
 } from "lucide-react";
 import { useSupabaseApp } from "@/components/supabase-app-provider";
@@ -31,6 +33,7 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
 import {
   addMovieToPlaylistDb,
   createPlaylist as createPlaylistDb,
+  deletePlaylistDb,
   duplicatePlaylistDb,
   fetchProfileDisplayName,
   fetchSavedMovieKeys,
@@ -163,6 +166,7 @@ export function MoviefyApp() {
   const [libraryLoading, setLibraryLoading] = useState(true);
   const [displayName, setDisplayName] = useState<string | null>(null);
   const [watchedDialogBusy, setWatchedDialogBusy] = useState(false);
+  const [deletePlaylistOpen, setDeletePlaylistOpen] = useState(false);
 
   const loadLibrary = useCallback(async () => {
     if (!client || !session?.user) return;
@@ -540,6 +544,29 @@ export function MoviefyApp() {
     pushToast("Duplicated list");
   }
 
+  async function deleteActivePlaylist() {
+    if (!client || !session?.user || !active) return;
+    const ok = await deletePlaylistDb(client, session.user.id, active.id);
+    if (!ok) {
+      pushToast("Could not delete playlist");
+      return;
+    }
+    setDeletePlaylistOpen(false);
+    await loadLibrary();
+    pushToast("Playlist deleted");
+  }
+
+  async function removeMovieFromActiveList(movie: Movie) {
+    if (!client || !active) return;
+    const ok = await removeMovieFromPlaylistDb(client, active.id, movie);
+    if (!ok) {
+      pushToast("Could not remove from list");
+      return;
+    }
+    await loadLibrary();
+    pushToast(`Removed “${movie.title}”`);
+  }
+
   if (!isSupabaseConfigured()) {
     return (
       <div className="flex min-h-dvh flex-col items-center justify-center gap-3 bg-black/35 px-6 text-center text-white backdrop-blur-md">
@@ -581,8 +608,8 @@ export function MoviefyApp() {
   }
 
   return (
-    <div className="min-h-dvh pb-6 text-foreground">
-      <div className="mx-auto flex max-w-[1600px] gap-2 p-2">
+    <div className="min-h-dvh pb-[max(1.5rem,env(safe-area-inset-bottom))] text-foreground">
+      <div className="mx-auto flex max-w-[1600px] gap-2 p-2 pt-[max(0.25rem,env(safe-area-inset-top,0px))]">
         <aside className="hidden w-[300px] shrink-0 rounded-xl bg-card p-3 lg:block">
           <div className="flex items-center justify-between px-2 py-1">
             <div className="flex items-center gap-2">
@@ -689,7 +716,7 @@ export function MoviefyApp() {
             </div>
           </div>
 
-          <ScrollArea className="mt-3 h-[calc(100dvh-240px)] px-1">
+          <ScrollArea className="mt-3 h-[calc(100dvh_-_240px_-_env(safe-area-inset-top)_-_env(safe-area-inset-bottom))] min-h-[12rem] px-1">
             <div className="space-y-1">
               {sidebarPlaylists.map((p) => (
                 <button
@@ -730,11 +757,11 @@ export function MoviefyApp() {
         </aside>
 
         <main className="min-w-0 flex-1 rounded-xl bg-card">
-          <header className="sticky top-0 z-10 flex flex-wrap items-center gap-2 rounded-t-xl border-b border-border/50 bg-card/95 px-3 py-2.5 backdrop-blur sm:gap-3 sm:px-4 sm:py-3">
+          <header className="sticky top-0 z-10 flex flex-nowrap items-center gap-2 overflow-x-auto overscroll-x-contain rounded-t-xl border-b border-border/50 bg-card/95 px-2 py-2.5 backdrop-blur [-ms-overflow-style:none] [scrollbar-width:none] sm:flex-wrap sm:overflow-visible sm:gap-3 sm:px-4 sm:py-3 [&::-webkit-scrollbar]:hidden">
             <button
               type="button"
               onClick={() => setSearchOpen(true)}
-              className="relative order-1 flex min-w-0 flex-1 basis-[min(100%,18rem)] items-center gap-2 rounded-lg border border-border/50 bg-muted/40 py-2 pl-9 pr-3 text-left text-sm text-muted-foreground transition hover:border-border hover:bg-muted/55 sm:max-w-xl"
+              className="relative order-1 flex min-h-11 min-w-0 flex-1 basis-[min(100%,18rem)] items-center gap-2 rounded-lg border border-border/50 bg-muted/40 py-2 pl-9 pr-3 text-left text-sm text-muted-foreground transition hover:border-border hover:bg-muted/55 sm:max-w-xl"
             >
               <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <span className="truncate">Search movies, people, genres & library…</span>
@@ -857,8 +884,11 @@ export function MoviefyApp() {
             </div>
           </header>
 
-          <ScrollArea key={libraryNav} className="h-[calc(100dvh-66px)]">
-            <div className="space-y-10 p-4 pb-10 sm:p-5">
+          <ScrollArea
+            key={libraryNav}
+            className="h-[calc(100dvh_-_4.125rem_-_env(safe-area-inset-top)_-_env(safe-area-inset-bottom))] min-h-[50dvh]"
+          >
+            <div className="space-y-10 p-3 pb-[max(2.5rem,calc(1.5rem+env(safe-area-inset-bottom)))] sm:p-5 sm:pb-10">
               {libraryNav === "saved" ? (
                 <section className="rounded-xl border border-border/60 bg-card/90 p-5 shadow-[var(--app-shadow-card)]">
                   <div className="mb-3.5 flex flex-wrap items-center justify-between gap-3">
@@ -1118,6 +1148,26 @@ export function MoviefyApp() {
                       <SquareStack className="size-4" />
                       Duplicate
                     </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger
+                        className={cn(
+                          buttonVariants({ size: "sm", variant: "ghost" }),
+                          "gap-1 text-white/80",
+                        )}
+                        aria-label="Playlist menu"
+                      >
+                        <MoreVertical className="size-4" />
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-48">
+                        <DropdownMenuItem
+                          className="text-destructive focus:text-destructive"
+                          onClick={() => setDeletePlaylistOpen(true)}
+                        >
+                          <Trash2 className="size-4" />
+                          Delete playlist…
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                     <Button size="sm" variant="secondary" onClick={() => setAddMovieOpen(true)}>
                       <Plus className="size-4" />
                       Add movie
@@ -1202,6 +1252,15 @@ export function MoviefyApp() {
                           >
                             <ChevronDown className="size-4" />
                           </Button>
+                          <Button
+                            size="icon-sm"
+                            variant="ghost"
+                            className="text-rose-300/90 hover:text-rose-200"
+                            aria-label={`Remove ${movie.title} from list`}
+                            onClick={() => void removeMovieFromActiveList(movie)}
+                          >
+                            <Trash2 className="size-4" />
+                          </Button>
                         </div>
                       </div>
                     );
@@ -1216,6 +1275,35 @@ export function MoviefyApp() {
           </ScrollArea>
         </main>
       </div>
+
+      <Dialog open={deletePlaylistOpen} onOpenChange={setDeletePlaylistOpen}>
+        <DialogContent className="border-border/80 bg-card text-foreground sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete this playlist?</DialogTitle>
+            <DialogDescription>
+              {active
+                ? `“${active.name}” and its order will be removed. This cannot be undone.`
+                : "This list will be removed. This cannot be undone."}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setDeletePlaylistOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => void deleteActivePlaylist()}
+            >
+              Delete playlist
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <MovieDetailDialog
         movie={selectedMovie}
@@ -1377,7 +1465,7 @@ export function MoviefyApp() {
 
       {toast && (
         <div
-          className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-full border border-white/10 bg-zinc-900 px-4 py-2 text-sm text-white shadow-lg"
+          className="fixed left-1/2 z-50 max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-full border border-white/10 bg-zinc-900 px-4 py-2.5 text-center text-sm text-white shadow-lg [bottom:max(1.25rem,calc(0.75rem+env(safe-area-inset-bottom)))]"
           role="status"
         >
           {toast}

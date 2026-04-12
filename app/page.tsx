@@ -89,8 +89,8 @@ export default async function Home() {
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_-20%,oklch(0.76_0.17_151_/_0.18),transparent)]" />
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(ellipse_60%_40%_at_100%_50%,oklch(0.55_0.2_300_/_0.08),transparent)]" />
 
-      <div className="relative mx-auto max-w-[1400px] px-4 pb-24 pt-5 sm:px-6 lg:px-10">
-        <header className="sticky top-4 z-50 mb-8 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/[0.08] bg-zinc-950/70 px-4 py-3 shadow-[0_8px_40px_rgba(0,0,0,0.45)] backdrop-blur-2xl sm:px-5">
+      <div className="relative mx-auto max-w-[1400px] px-4 pb-[max(6rem,calc(4.5rem+env(safe-area-inset-bottom)))] pt-[max(1.25rem,env(safe-area-inset-top))] sm:px-6 lg:px-10">
+        <header className="sticky top-[max(0.75rem,env(safe-area-inset-top))] z-50 mb-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/[0.08] bg-zinc-950/70 px-4 py-3 shadow-[0_8px_40px_rgba(0,0,0,0.45)] backdrop-blur-2xl sm:top-4 sm:mb-8 sm:px-5">
           <div className="flex items-center gap-3">
             <div className="flex size-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary/30 to-primary/5 text-primary ring-1 ring-primary/25">
               <Clapperboard className="size-5" />

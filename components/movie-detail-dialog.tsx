@@ -20,7 +20,7 @@ export function MovieDetailDialog({ open, onOpenChange, ...rest }: DialogProps) 
       <DialogContent
         showCloseButton={false}
         className={cn(
-          "flex max-h-[95dvh] min-h-0 w-[min(100vw-1rem,min(64rem,96vw))] max-w-none flex-col gap-0 overflow-hidden border border-white/10 bg-[#121212] p-0 text-white shadow-2xl ring-white/10",
+          "flex max-h-[min(95dvh,calc(100dvh_-_1rem_-_env(safe-area-inset-top)_-_env(safe-area-inset-bottom)))] min-h-0 w-[min(100vw-1rem,min(64rem,96vw))] max-w-none flex-col gap-0 overflow-hidden border border-white/10 bg-[#121212] p-0 text-white shadow-2xl ring-white/10",
         )}
       >
         <MovieDetailView

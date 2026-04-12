@@ -94,6 +94,15 @@ export function readExploreRecentOpens(): ExploreRecentOpen[] {
   }
 }
 
+export function clearExploreRecentLocal(): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
 /** Dedupe by TMDB id (or movie id), keep the latest `openedAtMs`, cap at `max`. */
 export function mergeExploreRecentMovies(
   server: ExploreRecentOpen[],

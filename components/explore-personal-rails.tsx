@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { ExploreMovieRail } from "@/components/explore-movie-rail";
 import { ExploreMovieStrip } from "@/components/explore-movie-strip";
+import { Button } from "@/components/ui/button";
 import type { Genre, Movie } from "@/lib/types";
 import { GENRES } from "@/lib/types";
 
@@ -26,6 +27,8 @@ type Props = {
   recentMovies: Movie[];
   recentLoading: boolean;
   onSelectMovie: (movie: Movie) => void;
+  onClearRecent?: () => void | Promise<void>;
+  canClearRecent?: boolean;
 };
 
 export function ExplorePersonalRails({
@@ -34,6 +37,8 @@ export function ExplorePersonalRails({
   recentMovies,
   recentLoading,
   onSelectMovie,
+  onClearRecent,
+  canClearRecent,
 }: Props) {
   const recent = recentMovies;
 
@@ -58,8 +63,10 @@ export function ExplorePersonalRails({
     youTid != null ? `/api/discover/similar?tmdbId=${youTid}` : null;
 
   return (
-    <div className="space-y-8">
+    <div id="explore-section-personal" className="space-y-8">
       <ExploreMovieStrip
+        sectionId="explore-section-watchlist"
+        variant="ribbon"
         title="Watchlist"
         subtitle="Titles you saved for later — same list as in Your theatre."
         movies={watchlistMovies.slice(0, 16)}
@@ -69,16 +76,33 @@ export function ExplorePersonalRails({
       />
 
       <ExploreMovieStrip
+        sectionId="explore-section-recent"
+        variant="filmstrip"
         title="Recently viewed"
         subtitle="Saved to your account when signed in, and on this device for quick access."
         movies={recent.slice(0, 16)}
         loading={recentLoading}
         onSelectMovie={onSelectMovie}
         emptyHint="Open any poster here — we will remember it for you."
+        headerEnd={
+          onClearRecent && canClearRecent ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-8 border-border/70 text-xs"
+              onClick={() => void onClearRecent()}
+            >
+              Clear
+            </Button>
+          ) : null
+        }
       />
 
       {continueEndpoint ? (
         <ExploreMovieRail
+          sectionId="explore-section-continue"
+          accent="orbit"
           title="Continue browsing"
           subtitle={`More in the “${recent[0]?.genre ?? "same"}” lane you were just browsing on TMDB.`}
           endpoint={continueEndpoint}
@@ -88,6 +112,8 @@ export function ExplorePersonalRails({
 
       {becauseEndpoint && becauseSeed ? (
         <ExploreMovieRail
+          sectionId="explore-section-because"
+          accent="signal"
           title={`Because you watched “${becauseSeed.title}”`}
           subtitle="TMDB picks people often pair with that title."
           endpoint={becauseEndpoint}
@@ -97,6 +123,8 @@ export function ExplorePersonalRails({
 
       {youEndpoint ? (
         <ExploreMovieRail
+          sectionId="explore-section-you"
+          accent="pulse"
           title="You might like"
           subtitle="Similar vibes and follow-ups — not the same list as above."
           endpoint={youEndpoint}

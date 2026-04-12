@@ -8,12 +8,21 @@ import {
   CalendarDays,
   Clapperboard,
   Flame,
+  Languages,
   Loader2,
   Megaphone,
   Sparkles,
 } from "lucide-react";
 import { PosterImage } from "@/components/poster-image";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { GENRES, type Genre } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { tmdbPosterUrl } from "@/lib/tmdb-image";
 import { movieToDetailPageHref } from "@/lib/movie-detail-nav";
@@ -26,6 +35,19 @@ import type {
   ScheduleResponse,
   ScheduleWindow,
 } from "@/lib/releases-schedule-types";
+
+const RELEASE_LANGS = [
+  { value: "all", label: "Any language" },
+  { value: "en", label: "English" },
+  { value: "hi", label: "Hindi" },
+  { value: "es", label: "Spanish" },
+  { value: "fr", label: "French" },
+  { value: "ja", label: "Japanese" },
+  { value: "ko", label: "Korean" },
+  { value: "de", label: "German" },
+  { value: "it", label: "Italian" },
+  { value: "pt", label: "Portuguese" },
+] as const;
 
 function dateBadgeParts(iso: string): { dow: string; dom: string; mon: string } {
   const t = Date.parse(`${iso}T12:00:00Z`);
@@ -57,6 +79,8 @@ export function ReleasesPage() {
   const router = useRouter();
   const [windowKey, setWindowKey] = useState<ScheduleWindow>("upcoming");
   const [typeFilter, setTypeFilter] = useState<"all" | ScheduleMedia>("all");
+  const [genreFilter, setGenreFilter] = useState<"all" | Genre>("all");
+  const [langFilter, setLangFilter] = useState<string>("all");
   const [data, setData] = useState<ScheduleResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -66,6 +90,8 @@ export function ReleasesPage() {
     const q = new URLSearchParams();
     q.set("window", windowKey);
     q.set("type", typeFilter);
+    if (genreFilter !== "all") q.set("genre", genreFilter);
+    if (langFilter !== "all") q.set("lang", langFilter);
     void fetch(`/api/releases/schedule?${q.toString()}`)
       .then((r) => r.json() as Promise<ScheduleResponse>)
       .then((d) => {
@@ -80,7 +106,7 @@ export function ReleasesPage() {
     return () => {
       cancelled = true;
     };
-  }, [windowKey, typeFilter]);
+  }, [windowKey, typeFilter, genreFilter, langFilter]);
 
   useEffect(() => {
     return load();
@@ -110,12 +136,12 @@ export function ReleasesPage() {
 
   return (
     <div className="min-h-dvh text-foreground">
-      <header className="sticky top-0 z-30 border-b border-border/60 bg-card/45 backdrop-blur-xl supports-[backdrop-filter]:bg-card/35">
-        <div className="mx-auto flex max-w-[1400px] items-center justify-between gap-3 px-4 py-3 sm:px-5">
+      <header className="sticky top-0 z-30 border-b border-border/60 bg-card/45 pt-[env(safe-area-inset-top,0px)] backdrop-blur-xl supports-[backdrop-filter]:bg-card/35">
+        <div className="mx-auto flex max-w-[1400px] items-center justify-between gap-3 px-3 py-3 sm:px-5">
           <div className="flex items-center gap-3">
             <Link
               href="/app"
-              className="flex items-center gap-2 rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-sm text-foreground/90 transition hover:bg-muted/50"
+              className="flex min-h-10 items-center gap-2 rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-sm text-foreground/90 transition hover:bg-muted/50"
             >
               <ArrowLeft className="size-4" />
               <span className="hidden sm:inline">Your theatre</span>
@@ -136,17 +162,19 @@ export function ReleasesPage() {
           </div>
           <Link
             href="/app/explore"
-            className="hidden items-center gap-2 text-sm text-muted-foreground transition hover:text-foreground sm:inline-flex"
+            aria-label="Explore"
+            title="Explore"
+            className="inline-flex min-h-10 items-center gap-2 rounded-md px-2 text-sm text-muted-foreground transition hover:bg-muted/40 hover:text-foreground sm:px-0"
           >
-            <Clapperboard className="size-4" />
-            Explore
+            <Clapperboard className="size-4 shrink-0" />
+            <span className="hidden sm:inline">Explore</span>
           </Link>
         </div>
       </header>
 
-      <main className="mx-auto flex max-w-[1500px] flex-col gap-8 px-4 py-8 sm:px-6 sm:py-10 lg:flex-row lg:items-start lg:gap-10">
-        <aside className="shrink-0 lg:w-52">
-          <div className="app-panel flex flex-col gap-1 p-2 sm:p-3">
+      <main className="mx-auto flex max-w-[1500px] flex-col gap-6 px-3 py-6 pb-[max(2rem,calc(1.25rem+env(safe-area-inset-bottom)))] sm:gap-8 sm:px-6 sm:py-10 sm:pb-10 lg:flex-row lg:items-start lg:gap-10">
+        <aside className="-mx-1 shrink-0 overflow-hidden px-1 lg:mx-0 lg:w-52 lg:overflow-visible lg:px-0">
+          <div className="app-panel flex max-lg:snap-x max-lg:snap-mandatory max-lg:touch-pan-x flex-row gap-1 overflow-x-auto overscroll-x-contain p-2 [-ms-overflow-style:none] [scrollbar-width:none] sm:p-3 lg:snap-none lg:flex-col lg:overflow-visible [&::-webkit-scrollbar]:hidden">
             {(
               [
                 {
@@ -175,7 +203,7 @@ export function ReleasesPage() {
                 title={hint}
                 onClick={() => setWindowKey(key)}
                 className={cn(
-                  "flex items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition",
+                  "flex shrink-0 items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition max-lg:min-h-11 max-lg:snap-start lg:w-full",
                   windowKey === key
                     ? "bg-primary/20 text-foreground ring-1 ring-primary/40"
                     : "text-muted-foreground hover:bg-muted/40 hover:text-foreground",
@@ -192,7 +220,7 @@ export function ReleasesPage() {
         </aside>
 
         <div className="min-w-0 flex-1 space-y-6">
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 gap-y-2.5">
             {(["all", "movie", "tv"] as const).map((f) => (
               <Button
                 key={f}
@@ -208,6 +236,58 @@ export function ReleasesPage() {
                 {f === "all" ? "All" : f === "movie" ? "Movies" : "Shows"}
               </Button>
             ))}
+            <span
+              className="hidden h-6 w-px shrink-0 bg-border/50 sm:block"
+              aria-hidden
+            />
+            <Select
+              value={genreFilter}
+              onValueChange={(v) => {
+                const val = v ?? "all";
+                setGenreFilter(
+                  val === "all" || (GENRES as readonly string[]).includes(val)
+                    ? (val as "all" | Genre)
+                    : "all",
+                );
+              }}
+            >
+              <SelectTrigger
+                className="h-8 w-[min(100%,10.5rem)] border-border/60 bg-background/70 text-xs"
+                aria-label="Filter by genre"
+              >
+                <SelectValue
+                  placeholder="Genre"
+                  className="truncate"
+                />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All genres</SelectItem>
+                {GENRES.map((g) => (
+                  <SelectItem key={g} value={g}>
+                    {g}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select
+              value={langFilter}
+              onValueChange={(v) => setLangFilter(v ?? "all")}
+            >
+              <SelectTrigger
+                className="h-8 w-[min(100%,10.5rem)] border-border/60 bg-background/70 text-xs"
+                aria-label="Filter by original language"
+              >
+                <Languages className="mr-1.5 size-3.5 shrink-0 opacity-70" aria-hidden />
+                <SelectValue className="truncate" />
+              </SelectTrigger>
+              <SelectContent>
+                {RELEASE_LANGS.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>
+                    {o.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           {loading ? (

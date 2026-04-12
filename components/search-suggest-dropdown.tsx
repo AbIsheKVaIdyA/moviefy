@@ -73,7 +73,7 @@ export function SearchSuggestDropdown({
 
   const isExplore = variant === "explore";
   const panel = cn(
-    "absolute left-0 right-0 top-full mt-2 max-h-[min(72vh,26rem)] overflow-y-auto rounded-2xl border shadow-xl",
+    "absolute left-0 right-0 top-full mt-2 max-h-[min(72vh,26rem,calc(100dvh_-_10rem_-_env(safe-area-inset-top)_-_env(safe-area-inset-bottom)))] overflow-y-auto overscroll-y-contain rounded-2xl border pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-xl",
     isExplore
       ? "z-[100] border-white/15 bg-[#12121a]/98 backdrop-blur-xl ring-1 ring-white/10"
       : "z-50 border-white/10 bg-[#1a1a1a] backdrop-blur-xl",
