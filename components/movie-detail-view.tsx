@@ -27,7 +27,6 @@ import {
   MessageSquare,
   Play,
   Plus,
-  Sparkles,
   X,
 } from "lucide-react";
 import { MovieDetailReviewsSection } from "@/components/movie-detail-reviews-section";
@@ -1053,115 +1052,6 @@ export function MovieDetailView({
                               </div>
                             )}
                           </section>
-
-                          <section className="min-w-0">
-                            <div className="mb-2 flex items-center gap-2">
-                              <Sparkles className="size-4 shrink-0 text-amber-300/90" />
-                              <h3 className="text-[11px] font-semibold uppercase tracking-wider text-white/45">
-                                Clips & meme moments
-                              </h3>
-                            </div>
-                            <p className="mb-3 max-w-2xl text-xs leading-relaxed text-white/45">
-                              YouTube results for this film—iconic scenes, edits, and
-                              meme-adjacent uploads. You&apos;re already on this movie;
-                              tap a card to watch in the player below.
-                            </p>
-                            {(data.youtubeMemeClips ?? []).length === 0 ? (
-                              <div className="flex flex-wrap items-center gap-3">
-                                <p className="text-sm text-white/50">
-                                  {data.configured.youtube
-                                    ? "No extra clip picks for this search."
-                                    : "Add YOUTUBE_API_KEY (server-side) for clip suggestions."}
-                                </p>
-                                <a
-                                  href={
-                                    data.fallbackYoutubeMemeSearchUrl ??
-                                    `https://www.youtube.com/results?search_query=${encodeURIComponent(
-                                      `${data.title} ${data.year} meme movie scene`,
-                                    )}`
-                                  }
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className={buttonVariants({
-                                    variant: "secondary",
-                                    size: "sm",
-                                  })}
-                                >
-                                  Search YouTube
-                                  <ExternalLink className="size-3.5" />
-                                </a>
-                              </div>
-                            ) : (
-                              <div className="space-y-3">
-                                <div
-                                  className={cn(
-                                    isPage
-                                      ? "-mx-4 px-4 sm:-mx-6 sm:px-6 md:-mx-8 md:px-8"
-                                      : "-mx-5 px-5 md:-ml-6 md:-mr-5 md:pl-6 md:pr-5",
-                                  )}
-                                >
-                                  <div
-                                    className="flex touch-pan-x gap-3 overflow-x-auto overscroll-x-contain pb-2 [-webkit-overflow-scrolling:touch] [scrollbar-color:rgba(255,255,255,0.28)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:h-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/25 [&::-webkit-scrollbar-track]:bg-transparent"
-                                  >
-                                    {(data.youtubeMemeClips ?? []).map((v) => (
-                                      <button
-                                        key={v.videoId}
-                                        type="button"
-                                        onClick={() => {
-                                          setReviewEmbedId(v.videoId);
-                                          setReviewEmbedTitle(v.title);
-                                        }}
-                                        className="w-[min(200px,42vw)] shrink-0 overflow-hidden rounded-xl border border-white/10 bg-[#1a1a1a] text-left transition hover:border-amber-400/35"
-                                      >
-                                        <div className="relative aspect-video bg-black">
-                                          <div className="absolute inset-0 flex items-center justify-center bg-black/35 opacity-0 transition hover:opacity-100">
-                                            <span className="flex size-11 items-center justify-center rounded-full bg-white/90 text-black shadow-lg">
-                                              <Play className="size-5 fill-current" />
-                                            </span>
-                                          </div>
-                                          {v.thumbnail ? (
-                                            // eslint-disable-next-line @next/next/no-img-element
-                                            <img
-                                              src={v.thumbnail}
-                                              alt=""
-                                              className="h-full w-full object-cover"
-                                            />
-                                          ) : null}
-                                        </div>
-                                        <div className="p-2.5">
-                                          <p className="line-clamp-2 text-xs font-medium leading-snug text-white/95">
-                                            {v.title}
-                                          </p>
-                                          <p className="mt-1 line-clamp-1 text-[10px] text-white/45">
-                                            {v.channelTitle}
-                                          </p>
-                                        </div>
-                                      </button>
-                                    ))}
-                                  </div>
-                                </div>
-                                <a
-                                  href={
-                                    data.fallbackYoutubeMemeSearchUrl ??
-                                    `https://www.youtube.com/results?search_query=${encodeURIComponent(
-                                      `${data.title} ${data.year} meme movie scene`,
-                                    )}`
-                                  }
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className={buttonVariants({
-                                    variant: "ghost",
-                                    size: "sm",
-                                    className: "h-8 gap-1 text-xs text-white/70",
-                                  })}
-                                >
-                                  More clips on YouTube
-                                  <ExternalLink className="size-3" />
-                                </a>
-                              </div>
-                            )}
-                          </section>
-
 
                         </>
                       ) : null}

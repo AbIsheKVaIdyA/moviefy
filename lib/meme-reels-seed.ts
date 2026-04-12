@@ -1,15 +1,15 @@
 /**
- * Editor-curated “famous moment / meme lineage” picks.
- * There is no reliable global “trending movie memes” API with TMDB links — this list
- * is the practical source of truth; rotate titles here as you like.
+ * Editorial seeds: TMDB film + meme hook. The server resolves each row to a
+ * YouTube **Data API** search (`videoDuration=short`) — no HTML scraping.
+ * Tune queries here; cache TTL is long to save quota.
  */
-export type MemeSpotlightCurated = {
+export type MemeReelSeed = {
   tmdbId: number;
-  /** Short label on the card (not the film title). */
+  /** Shown on the reel card; also used in the YouTube search query. */
   memeTag: string;
 };
 
-export const MEME_SPOTLIGHT_CURATED: MemeSpotlightCurated[] = [
+export const MEME_REEL_SEEDS: MemeReelSeed[] = [
   { tmdbId: 694, memeTag: "Here's Johnny" },
   { tmdbId: 597, memeTag: "King of the world" },
   { tmdbId: 1891, memeTag: "I am your father" },

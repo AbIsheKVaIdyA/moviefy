@@ -365,7 +365,6 @@ export async function GET(request: NextRequest) {
   }
 
   const youtubeReviews: YoutubeReview[] = [];
-  const youtubeMemeClips: YoutubeReview[] = [];
 
   if (YT_KEY && resolvedTitle) {
     type YtSearchItem = {
@@ -457,42 +456,6 @@ export async function GET(request: NextRequest) {
         if (youtubeReviews.length >= 12) break;
       }
 
-      const excludeClipIds = new Set(youtubeReviews.map((v) => v.videoId));
-      const memeQueries =
-        tmdbMedia === "tv"
-          ? [
-              `${resolvedTitle} ${resolvedYear} tv show scene`,
-              `${resolvedTitle} iconic tv moment`,
-            ]
-          : [
-              `${resolvedTitle} ${resolvedYear} movie meme scene`,
-              `${resolvedTitle} iconic scene movie`,
-            ];
-      const seenMemes = new Set<string>();
-      for (const q of memeQueries) {
-        if (stopYoutubeSearches) break;
-        const { items, apiError } = await runSearch(q);
-        if (apiError) {
-          noteYtError(apiError);
-          break;
-        }
-        for (const item of items) {
-          const vid = item.id.videoId;
-          if (!vid || excludeClipIds.has(vid) || seenMemes.has(vid)) continue;
-          seenMemes.add(vid);
-          youtubeMemeClips.push({
-            videoId: vid,
-            title: item.snippet.title,
-            channelTitle: item.snippet.channelTitle,
-            thumbnail:
-              item.snippet.thumbnails?.medium?.url ??
-              item.snippet.thumbnails?.default?.url ??
-              null,
-          });
-          if (youtubeMemeClips.length >= 10) break;
-        }
-        if (youtubeMemeClips.length >= 10) break;
-      }
     } catch {
       warnings.push("YouTube API request failed.");
     }
@@ -507,12 +470,6 @@ export async function GET(request: NextRequest) {
       ? `${resolvedTitle} ${resolvedYear} tv show review`
       : `${resolvedTitle} ${resolvedYear} movie review`,
   )}`;
-  const fallbackYoutubeMemeSearchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(
-    tmdbMedia === "tv"
-      ? `${resolvedTitle} ${resolvedYear} tv meme scene`
-      : `${resolvedTitle} ${resolvedYear} meme movie scene`,
-  )}`;
-
   const body: MovieEnrichResponse = {
     configured,
     tmdbId: tmdbId ? Number(tmdbId) : null,
@@ -527,9 +484,7 @@ export async function GET(request: NextRequest) {
     imdbId,
     streaming,
     youtubeReviews,
-    youtubeMemeClips,
     fallbackYoutubeSearchUrl,
-    fallbackYoutubeMemeSearchUrl,
     trailerYoutubeKey,
     tmdbBackdropUrl,
     tmdbCast,

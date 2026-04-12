@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams, usePathname, useSearchParams } from "next/navigation";
+import { AddToPlaylistDialog } from "@/components/add-to-playlist-dialog";
 import { MovieDetailView } from "@/components/movie-detail-view";
 import { useSupabaseApp } from "@/components/supabase-app-provider";
 import {
@@ -18,6 +19,7 @@ import type { Playlist } from "@/lib/types";
 
 export default function TmdbMoviePage() {
   const params = useParams();
+  const pathname = usePathname();
   const sp = useSearchParams();
   const { client, session } = useSupabaseApp();
 
@@ -31,6 +33,7 @@ export default function TmdbMoviePage() {
   const [libraryPlaylists, setLibraryPlaylists] = useState<Playlist[]>([]);
   const [watchedBusy, setWatchedBusy] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const [pickListOpen, setPickListOpen] = useState(false);
   const toast = useCallback((m: string) => setToastMsg(m), []);
 
   const movie = useMemo(() => {
@@ -45,8 +48,15 @@ export default function TmdbMoviePage() {
       ? "/app/explore"
       : sp.get("from") === "releases"
         ? "/app/releases"
-        : "/app";
+        : sp.get("from") === "reels"
+          ? "/app/reels"
+          : "/app";
   const tmdbMedia = sp.get("media") === "tv" ? "tv" : "movie";
+
+  const signInNextPath = useMemo(() => {
+    const q = sp.toString();
+    return q ? `${pathname}?${q}` : pathname;
+  }, [pathname, sp]);
 
   const watchedPlaylist = useMemo(
     () => libraryPlaylists.find((p) => p.kind === "watched"),
@@ -59,6 +69,13 @@ export default function TmdbMoviePage() {
       movieMatchesInPlaylistRow(row, movie),
     );
   }, [movie, watchedPlaylist]);
+
+  const inAnyPlaylist = useMemo(() => {
+    if (!movie) return false;
+    return libraryPlaylists.some((p) =>
+      p.movies.some((row) => movieMatchesInPlaylistRow(row, movie)),
+    );
+  }, [movie, libraryPlaylists]);
 
   useLayoutEffect(() => {
     if (!movie) return;
@@ -133,7 +150,7 @@ export default function TmdbMoviePage() {
         active
         variant="page"
         backHref={backHref}
-        inActiveList={false}
+        inActiveList={inAnyPlaylist}
         saved={saved}
         onToggleSave={async () => {
           if (!client || !session?.user) return;
@@ -147,9 +164,13 @@ export default function TmdbMoviePage() {
           setSavedIds(keys);
           toast(was ? "Removed from saved" : "Saved for later");
         }}
-        onAddToList={() =>
-          toast("Open Your theatre to add this title to one of your playlists.")
-        }
+        onAddToList={() => {
+          if (!session?.user) {
+            toast("Sign in to add this title to a playlist.");
+            return;
+          }
+          setPickListOpen(true);
+        }}
         watched={inWatched}
         onToggleWatched={session?.user ? onToggleWatched : undefined}
         watchedBusy={watchedBusy}
@@ -157,6 +178,16 @@ export default function TmdbMoviePage() {
         userId={session?.user?.id ?? null}
         viewerDisplayName={viewerDisplayName}
         tmdbMedia={tmdbMedia}
+      />
+      <AddToPlaylistDialog
+        open={pickListOpen}
+        onOpenChange={setPickListOpen}
+        movie={movie}
+        client={client}
+        userId={session?.user?.id ?? null}
+        onNotify={toast}
+        onUpdated={refreshLibrary}
+        signInNextPath={signInNextPath}
       />
       {toastMsg ? (
         <div

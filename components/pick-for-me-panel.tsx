@@ -41,6 +41,17 @@ export type PickForMePanelProps = {
   onPickMovie: (movie: Movie) => void;
 };
 
+/** Base UI Select disallows empty `value`; map to state `""` for the API. */
+const LANGUAGE_SELECT_ANY = "__any__";
+
+function languageTriggerLabel(selectValue: unknown): string {
+  if (selectValue === LANGUAGE_SELECT_ANY || selectValue == null || selectValue === "") {
+    return "Any language";
+  }
+  const code = String(selectValue);
+  return PICK_FOR_ME_LANGUAGES.find((o) => o.code === code)?.label ?? code;
+}
+
 export function PickForMePanel({ onPickMovie }: PickForMePanelProps) {
   const [selectedGenres, setSelectedGenres] = useState<Genre[]>([]);
   const [language, setLanguage] = useState("");
@@ -169,19 +180,23 @@ export function PickForMePanel({ onPickMovie }: PickForMePanelProps) {
                   Language
                 </label>
                 <Select
-                  value={language || "__any__"}
+                  value={language || LANGUAGE_SELECT_ANY}
                   onValueChange={(v) =>
-                    setLanguage(v == null || v === "__any__" ? "" : v)
+                    setLanguage(
+                      v == null || v === LANGUAGE_SELECT_ANY ? "" : v,
+                    )
                   }
                 >
                   <SelectTrigger className="h-10 w-full border-border/60 bg-background/50">
-                    <SelectValue placeholder="Any language" />
+                    <SelectValue placeholder="Any language">
+                      {(v) => languageTriggerLabel(v)}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {PICK_FOR_ME_LANGUAGES.map((o) => (
                       <SelectItem
-                        key={o.code || "__any__"}
-                        value={o.code || "__any__"}
+                        key={o.code || LANGUAGE_SELECT_ANY}
+                        value={o.code || LANGUAGE_SELECT_ANY}
                       >
                         {o.label}
                       </SelectItem>
@@ -198,7 +213,12 @@ export function PickForMePanel({ onPickMovie }: PickForMePanelProps) {
                   onValueChange={(v) => setEra(v as PickForMeEra)}
                 >
                   <SelectTrigger className="h-10 w-full border-border/60 bg-background/50">
-                    <SelectValue />
+                    <SelectValue>
+                      {(v) =>
+                        PICK_FOR_ME_ERA_LABEL[v as PickForMeEra] ??
+                        (v != null ? String(v) : "")
+                      }
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {PICK_FOR_ME_ERAS.map((e) => (
@@ -218,7 +238,12 @@ export function PickForMePanel({ onPickMovie }: PickForMePanelProps) {
                   onValueChange={(v) => setVibe(v as PickForMeVibe)}
                 >
                   <SelectTrigger className="h-10 w-full border-border/60 bg-background/50">
-                    <SelectValue />
+                    <SelectValue>
+                      {(v) =>
+                        PICK_FOR_ME_VIBE_LABEL[v as PickForMeVibe] ??
+                        (v != null ? String(v) : "")
+                      }
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {PICK_FOR_ME_VIBES.map((v) => (

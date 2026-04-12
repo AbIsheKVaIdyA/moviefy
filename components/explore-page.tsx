@@ -8,12 +8,13 @@ import {
   CalendarDays,
   Clapperboard,
   Compass,
+  Film,
   Globe,
   Heart,
-  Laugh,
   Loader2,
   LogOut,
   Megaphone,
+  Settings,
   Plus,
   Search,
   UserPlus,
@@ -37,10 +38,19 @@ import type {
   SearchSuggestResponse,
 } from "@/lib/search-suggest-types";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Select,
   SelectContent,
@@ -83,6 +93,7 @@ import type {
 import { movieFromTmdbDiscoverItem } from "@/lib/tmdb-genre-map";
 import { tmdbGenreLabels } from "@/lib/tmdb-genre-labels";
 import { cn } from "@/lib/utils";
+import { avatarLetter } from "@/lib/display-name";
 import { SearchSuggestDropdown } from "@/components/search-suggest-dropdown";
 import { ExploreJumpNav, type ExploreJumpLink } from "@/components/explore-jump-nav";
 import { ExploreSpotlightRails } from "@/components/explore-spotlight-rails";
@@ -250,10 +261,6 @@ export function ExplorePage() {
   const [topChartWindow, setTopChartWindow] = useState<"week" | "day">("week");
   const [dayTrending, setDayTrending] = useState<TmdbDiscoverItem[]>([]);
   const [dayTrendingLoading, setDayTrendingLoading] = useState(false);
-  const [memeItems, setMemeItems] = useState<
-    { memeTag: string; movie: Movie }[]
-  >([]);
-  const [memeLoading, setMemeLoading] = useState(true);
   const [watchlistMovies, setWatchlistMovies] = useState<Movie[]>([]);
   const [watchlistLoading, setWatchlistLoading] = useState(false);
   const [exploreLsTick, setExploreLsTick] = useState(0);
@@ -430,25 +437,6 @@ export function ExplorePage() {
     topChartWindow === "week" ? townLoading : dayTrendingLoading;
 
   useEffect(() => {
-    let cancelled = false;
-    setMemeLoading(true);
-    void fetch("/api/explore/meme-spotlight")
-      .then((r) => r.json() as Promise<{ configured?: boolean; items?: { memeTag: string; movie: Movie }[] }>)
-      .then((d) => {
-        if (!cancelled) setMemeItems(d.items ?? []);
-      })
-      .catch(() => {
-        if (!cancelled) setMemeItems([]);
-      })
-      .finally(() => {
-        if (!cancelled) setMemeLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
     const ctrl = new AbortController();
     setGenreLoading(true);
     const url =
@@ -555,7 +543,6 @@ export function ExplorePage() {
       { id: "explore-stream-prime", label: "Prime" },
       { id: "explore-stream-hulu", label: "Hulu" },
       { id: "explore-stream-disney", label: "Disney+" },
-      { id: "explore-section-meme", label: "Meme hall" },
       { id: "explore-browse-genre", label: "Genres" },
       { id: "explore-section-editor-picks", label: "TMDB picks" },
     );
@@ -566,13 +553,19 @@ export function ExplorePage() {
     return links;
   }, [castPerson?.id, followedPlaylists.length]);
 
+  /** Avoid SSR/client mismatch: localStorage is empty on server, populated on client. */
+  const [exploreRecentLocalReady, setExploreRecentLocalReady] = useState(false);
+  useEffect(() => {
+    setExploreRecentLocalReady(true);
+  }, []);
+
   const mergedExploreRecentMovies = useMemo(
     () =>
       mergeExploreRecentMovies(
         serverExploreRecentOpens,
-        readExploreRecentOpens(),
+        exploreRecentLocalReady ? readExploreRecentOpens() : [],
       ),
-    [serverExploreRecentOpens, exploreLsTick],
+    [serverExploreRecentOpens, exploreLsTick, exploreRecentLocalReady],
   );
 
   function selectMovie(movie: Movie) {
@@ -716,22 +709,15 @@ export function ExplorePage() {
               <CalendarDays className="size-4 shrink-0" />
               <span className="hidden sm:inline">Release radar</span>
             </Link>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              aria-label="Sign out"
-              className="gap-1.5 text-muted-foreground hover:bg-muted/50 hover:text-foreground"
-              onClick={() => {
-                void client?.auth.signOut().then(() => {
-                  router.push("/?auth=sign-in");
-                  router.refresh();
-                });
-              }}
+            <Link
+              href="/app/reels"
+              aria-label="Meme reels"
+              title="Meme reels"
+              className="inline-flex min-h-10 items-center gap-1.5 rounded-md px-2.5 py-2 text-sm text-muted-foreground transition hover:bg-muted/40 hover:text-foreground"
             >
-              <LogOut className="size-4 shrink-0" />
-              <span className="hidden sm:inline">Sign out</span>
-            </Button>
+              <Film className="size-4 shrink-0" />
+              <span className="hidden sm:inline">Meme reels</span>
+            </Link>
             <Link
               href="/app"
               className="hidden items-center gap-2 text-sm text-muted-foreground transition hover:text-foreground sm:inline-flex"
@@ -739,6 +725,51 @@ export function ExplorePage() {
               <Clapperboard className="size-4" />
               Your theatre
             </Link>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                aria-label="Account menu"
+                className={cn(
+                  buttonVariants({ variant: "ghost", size: "icon-sm" }),
+                  "rounded-full text-foreground hover:bg-muted/50",
+                )}
+              >
+                <Avatar size="sm">
+                  <AvatarFallback>
+                    {avatarLetter(null, session)}
+                  </AvatarFallback>
+                </Avatar>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
+                sideOffset={8}
+                className="min-w-48 border-border/60 bg-popover text-popover-foreground"
+              >
+                <DropdownMenuLabel className="text-muted-foreground">
+                  Account
+                </DropdownMenuLabel>
+                <DropdownMenuItem
+                  disabled
+                  className="text-muted-foreground focus:bg-muted/50 focus:text-foreground"
+                >
+                  <Settings className="size-4 opacity-60" />
+                  Settings
+                </DropdownMenuItem>
+                <DropdownMenuSeparator className="bg-border/60" />
+                <DropdownMenuItem
+                  variant="destructive"
+                  className="focus:bg-red-950/50"
+                  onClick={() => {
+                    void client?.auth.signOut().then(() => {
+                      router.push("/?auth=sign-in");
+                      router.refresh();
+                    });
+                  }}
+                >
+                  <LogOut className="size-4" />
+                  Sign out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </header>
@@ -973,68 +1004,6 @@ export function ExplorePage() {
             <h2 className="type-section-title">What&apos;s trending where you watch</h2>
           </div>
           <ExploreStreamingRails onSelectMovie={selectMovie} />
-        </section>
-
-        <section id="explore-section-meme" className="scroll-mt-28">
-          <div className="mb-3.5 flex flex-wrap items-center gap-2.5">
-            <Laugh className="size-5 shrink-0 text-amber-400" aria-hidden />
-            <div>
-              <h2 className="type-section-title">Meme hall of fame</h2>
-            </div>
-          </div>
-          <div className="app-panel p-3 sm:p-4">
-            {memeLoading ? (
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
-                {Array.from({ length: 8 }).map((_, i) => (
-                  <div
-                    key={i}
-                    className="aspect-[2/3] w-full animate-pulse rounded-xl bg-muted/35"
-                  />
-                ))}
-              </div>
-            ) : memeItems.length === 0 ? (
-              <p className="py-8 text-center text-sm text-muted-foreground">
-                Add TMDB_API_KEY to load curated meme-lineage titles, or check the
-                meme-spotlight API.
-              </p>
-            ) : (
-              <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-3.5 md:grid-cols-4 md:gap-4">
-                {memeItems.map(({ memeTag, movie }) => (
-                  <li key={movie.id} className="min-w-0">
-                    <button
-                      type="button"
-                      onClick={() => selectMovie(movie)}
-                      className="group flex h-full w-full flex-col rounded-2xl border border-border/50 bg-muted/20 p-2 text-left transition hover:border-amber-400/45 hover:bg-muted/35 sm:p-2.5"
-                    >
-                      <div className="relative aspect-[2/3] w-full overflow-hidden rounded-xl bg-zinc-900 ring-1 ring-white/5">
-                        <PosterImage
-                          src={movie.posterImage}
-                          alt={movie.title}
-                          fill
-                          placeholderGradient={movie.posterClass}
-                          className="object-cover transition duration-300 group-hover:scale-[1.02]"
-                          sizes="(max-width:640px) 44vw, 160px"
-                        />
-                        <div className="absolute left-1.5 top-1.5 right-1.5">
-                          <Badge className="border-0 bg-black/75 px-1.5 py-0 text-[8px] font-medium uppercase leading-tight tracking-wide text-amber-100/95 backdrop-blur line-clamp-2 sm:text-[9px]">
-                            {memeTag}
-                          </Badge>
-                        </div>
-                      </div>
-                      <div className="mt-2 flex min-h-[2.75rem] flex-1 flex-col justify-between gap-1">
-                        <p className="line-clamp-2 text-[11px] font-semibold leading-snug text-foreground sm:text-xs">
-                          {movie.title}
-                        </p>
-                        <p className="text-[10px] text-muted-foreground">
-                          {movie.year || "—"}
-                        </p>
-                      </div>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
         </section>
 
         <section id="explore-browse-genre" className="scroll-mt-28">

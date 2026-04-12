@@ -78,6 +78,21 @@ create index if not exists playlist_items_playlist_idx on public.playlist_items 
 create index if not exists playlist_likes_playlist_idx on public.playlist_likes (playlist_id);
 create index if not exists saved_movies_user_idx on public.saved_movies (user_id);
 
+-- Release radar bookmarks (“Coming up” in Your theatre)
+create table if not exists public.user_release_watchlist (
+  user_id uuid not null references auth.users (id) on delete cascade,
+  tmdb_id integer not null,
+  media_type text not null default 'movie' check (media_type in ('movie', 'tv')),
+  release_date text not null,
+  title text not null default '',
+  poster_path text,
+  created_at timestamptz not null default now(),
+  primary key (user_id, tmdb_id, media_type)
+);
+
+create index if not exists user_release_watchlist_user_release_idx
+  on public.user_release_watchlist (user_id, release_date);
+
 -- Explore “Recently viewed” (signed-in users; merged with device localStorage in the app)
 create table if not exists public.explore_recent_opens (
   user_id uuid not null references auth.users (id) on delete cascade,
@@ -232,6 +247,7 @@ alter table public.movies enable row level security;
 alter table public.playlists enable row level security;
 alter table public.playlist_items enable row level security;
 alter table public.saved_movies enable row level security;
+alter table public.user_release_watchlist enable row level security;
 alter table public.explore_recent_opens enable row level security;
 alter table public.movie_user_takes enable row level security;
 alter table public.playlist_follows enable row level security;
@@ -315,6 +331,23 @@ create policy "saved_insert_own" on public.saved_movies for insert with check (a
 
 drop policy if exists "saved_delete_own" on public.saved_movies;
 create policy "saved_delete_own" on public.saved_movies for delete using (auth.uid() = user_id);
+
+-- Release radar bookmarks
+drop policy if exists "release_watch_select_own" on public.user_release_watchlist;
+create policy "release_watch_select_own" on public.user_release_watchlist
+  for select using (auth.uid() = user_id);
+
+drop policy if exists "release_watch_insert_own" on public.user_release_watchlist;
+create policy "release_watch_insert_own" on public.user_release_watchlist
+  for insert with check (auth.uid() = user_id);
+
+drop policy if exists "release_watch_update_own" on public.user_release_watchlist;
+create policy "release_watch_update_own" on public.user_release_watchlist
+  for update using (auth.uid() = user_id);
+
+drop policy if exists "release_watch_delete_own" on public.user_release_watchlist;
+create policy "release_watch_delete_own" on public.user_release_watchlist
+  for delete using (auth.uid() = user_id);
 
 -- Explore recent opens (per user; upsert updates opened_at)
 drop policy if exists "explore_recent_select_own" on public.explore_recent_opens;

@@ -5,16 +5,29 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
+  Bookmark,
   CalendarDays,
   Clapperboard,
+  Film,
   Flame,
+  LogOut,
+  Settings,
   Languages,
   Loader2,
   Megaphone,
   Sparkles,
 } from "lucide-react";
 import { PosterImage } from "@/components/poster-image";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Select,
   SelectContent,
@@ -24,11 +37,19 @@ import {
 } from "@/components/ui/select";
 import { GENRES, type Genre } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { avatarLetter } from "@/lib/display-name";
 import { tmdbPosterUrl } from "@/lib/tmdb-image";
 import { movieToDetailPageHref } from "@/lib/movie-detail-nav";
 import { prefetchMovieEnrich } from "@/lib/movie-enrich-prefetch";
 import { formatScheduleHype } from "@/lib/releases-schedule-display";
 import { scheduleItemToMovie } from "@/lib/releases-schedule-mappers";
+import { useSupabaseApp } from "@/components/supabase-app-provider";
+import {
+  addUserReleaseWatchlist,
+  dispatchReleaseWatchlistChanged,
+  fetchUserReleaseWatchlist,
+  removeUserReleaseWatchlist,
+} from "@/lib/supabase/release-watchlist-service";
 import type {
   ScheduleItem,
   ScheduleMedia,
@@ -65,6 +86,10 @@ function dateBadgeParts(iso: string): { dow: string; dom: string; mon: string } 
   return { dow, dom, mon };
 }
 
+function watchlistKey(item: ScheduleItem): string {
+  return `${item.mediaType}-${item.tmdbId}`;
+}
+
 function groupByDate(items: ScheduleItem[]): Map<string, ScheduleItem[]> {
   const m = new Map<string, ScheduleItem[]>();
   for (const it of items) {
@@ -77,12 +102,38 @@ function groupByDate(items: ScheduleItem[]): Map<string, ScheduleItem[]> {
 
 export function ReleasesPage() {
   const router = useRouter();
-  const [windowKey, setWindowKey] = useState<ScheduleWindow>("upcoming");
+  const { client, session } = useSupabaseApp();
+  const [windowKey, setWindowKey] = useState<ScheduleWindow>("today");
   const [typeFilter, setTypeFilter] = useState<"all" | ScheduleMedia>("all");
   const [genreFilter, setGenreFilter] = useState<"all" | Genre>("all");
   const [langFilter, setLangFilter] = useState<string>("all");
   const [data, setData] = useState<ScheduleResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [trackedIds, setTrackedIds] = useState<Set<string>>(() => new Set());
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!toastMsg) return;
+    const t = window.setTimeout(() => setToastMsg(null), 2600);
+    return () => window.clearTimeout(t);
+  }, [toastMsg]);
+
+  useEffect(() => {
+    if (!client || !session?.user) {
+      setTrackedIds(new Set());
+      return;
+    }
+    let cancelled = false;
+    void fetchUserReleaseWatchlist(client, session.user.id).then((rows) => {
+      if (cancelled) return;
+      setTrackedIds(
+        new Set(rows.map((r) => `${r.mediaType}-${r.tmdbId}`)),
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [client, session?.user?.id]);
 
   const load = useCallback(() => {
     let cancelled = false;
@@ -134,6 +185,42 @@ export function ReleasesPage() {
     router.push(href);
   }
 
+  async function toggleReleaseWatch(item: ScheduleItem) {
+    if (!client || !session?.user) {
+      setToastMsg("Sign in to save titles for your theatre.");
+      return;
+    }
+    const key = watchlistKey(item);
+    const uid = session.user.id;
+    if (trackedIds.has(key)) {
+      const ok = await removeUserReleaseWatchlist(
+        client,
+        uid,
+        item.tmdbId,
+        item.mediaType,
+      );
+      if (!ok) {
+        setToastMsg("Could not remove from Coming up.");
+        return;
+      }
+      setTrackedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+      setToastMsg("Removed from Coming up");
+    } else {
+      const ok = await addUserReleaseWatchlist(client, uid, item);
+      if (!ok) {
+        setToastMsg("Could not save — run the release-watchlist DB migration?");
+        return;
+      }
+      setTrackedIds((prev) => new Set(prev).add(key));
+      setToastMsg("Saved to Coming up in Your theatre");
+    }
+    dispatchReleaseWatchlistChanged();
+  }
+
   return (
     <div className="min-h-dvh text-foreground">
       <header className="sticky top-0 z-30 border-b border-border/60 bg-card/45 pt-[env(safe-area-inset-top,0px)] backdrop-blur-xl supports-[backdrop-filter]:bg-card/35">
@@ -155,20 +242,78 @@ export function ReleasesPage() {
                   Release radar
                 </p>
                 <p className="text-[10px] text-muted-foreground">
-                  What lands next — by day, format, and buzz
+                  Use{" "}
+                  <span className="font-medium text-foreground/90">Save to Coming up</span>{" "}
+                  under each poster — lists sync to Your theatre (sign in).
                 </p>
               </div>
             </div>
           </div>
-          <Link
-            href="/app/explore"
-            aria-label="Explore"
-            title="Explore"
-            className="inline-flex min-h-10 items-center gap-2 rounded-md px-2 text-sm text-muted-foreground transition hover:bg-muted/40 hover:text-foreground sm:px-0"
-          >
-            <Clapperboard className="size-4 shrink-0" />
-            <span className="hidden sm:inline">Explore</span>
-          </Link>
+          <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+            <Link
+              href="/app/explore"
+              aria-label="Explore"
+              title="Explore"
+              className="inline-flex min-h-10 items-center gap-2 rounded-md px-2 text-sm text-muted-foreground transition hover:bg-muted/40 hover:text-foreground sm:px-0"
+            >
+              <Clapperboard className="size-4 shrink-0" />
+              <span className="hidden sm:inline">Explore</span>
+            </Link>
+            <Link
+              href="/app/reels"
+              aria-label="Meme reels"
+              title="Meme reels"
+              className="inline-flex min-h-10 items-center gap-1.5 rounded-md px-2 text-sm text-muted-foreground transition hover:bg-muted/40 hover:text-foreground sm:px-0"
+            >
+              <Film className="size-4 shrink-0" />
+              <span className="hidden sm:inline">Meme reels</span>
+            </Link>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                aria-label="Account menu"
+                className={cn(
+                  buttonVariants({ variant: "ghost", size: "icon-sm" }),
+                  "rounded-full text-foreground hover:bg-muted/50",
+                )}
+              >
+                <Avatar size="sm">
+                  <AvatarFallback>
+                    {avatarLetter(null, session)}
+                  </AvatarFallback>
+                </Avatar>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
+                sideOffset={8}
+                className="min-w-48 border-border/60 bg-popover text-popover-foreground"
+              >
+                <DropdownMenuLabel className="text-muted-foreground">
+                  Account
+                </DropdownMenuLabel>
+                <DropdownMenuItem
+                  disabled
+                  className="text-muted-foreground focus:bg-muted/50 focus:text-foreground"
+                >
+                  <Settings className="size-4 opacity-60" />
+                  Settings
+                </DropdownMenuItem>
+                <DropdownMenuSeparator className="bg-border/60" />
+                <DropdownMenuItem
+                  variant="destructive"
+                  className="focus:bg-red-950/50"
+                  onClick={() => {
+                    void client?.auth.signOut().then(() => {
+                      router.push("/?auth=sign-in");
+                      router.refresh();
+                    });
+                  }}
+                >
+                  <LogOut className="size-4" />
+                  Sign out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
       </header>
 
@@ -325,45 +470,87 @@ export function ReleasesPage() {
                       </span>
                     </div>
                     <div className="grid min-w-0 flex-1 grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-                      {items.map((item) => (
-                        <button
-                          key={`${item.mediaType}-${item.tmdbId}`}
-                          type="button"
-                          onClick={() => void openItem(item)}
-                          className="group w-full text-left"
-                        >
-                          <div className="relative aspect-[2/3] overflow-hidden rounded-xl bg-zinc-900 ring-1 ring-border/60 transition group-hover:ring-primary/40">
-                            <PosterImage
-                              src={
-                                item.posterPath
-                                  ? tmdbPosterUrl(item.posterPath, "w342")
-                                  : ""
+                      {items.map((item) => {
+                        const tracked = trackedIds.has(watchlistKey(item));
+                        return (
+                          <div
+                            key={`${item.mediaType}-${item.tmdbId}`}
+                            className="group w-full text-left"
+                          >
+                            <div className="relative aspect-[2/3] overflow-hidden rounded-xl bg-zinc-900 ring-1 ring-border/60 transition group-hover:ring-primary/40">
+                              <button
+                                type="button"
+                                onClick={() => void openItem(item)}
+                                className="absolute inset-0 z-0 block text-left"
+                                aria-label={`Open ${item.title}`}
+                              >
+                                <PosterImage
+                                  src={
+                                    item.posterPath
+                                      ? tmdbPosterUrl(item.posterPath, "w342")
+                                      : ""
+                                  }
+                                  alt=""
+                                  fill
+                                  placeholderGradient="from-zinc-700 to-zinc-900"
+                                  className="object-cover transition duration-300 group-hover:scale-[1.03]"
+                                  sizes="(max-width:640px) 42vw, 160px"
+                                />
+                              </button>
+                              <div className="pointer-events-none absolute right-1.5 top-1.5 flex items-center gap-0.5 rounded-full bg-orange-950/85 px-1.5 py-0.5 text-[10px] font-semibold text-orange-100 ring-1 ring-orange-400/35 backdrop-blur-sm">
+                                <Flame className="size-3 shrink-0 text-orange-400" />
+                                {formatScheduleHype(item)}
+                              </div>
+                              <div className="pointer-events-none absolute bottom-1.5 left-1.5 rounded bg-black/70 px-1 py-0.5 text-[9px] font-medium uppercase tracking-wide text-white/90">
+                                {item.mediaType === "tv" ? "Show" : "Film"}
+                              </div>
+                            </div>
+                            <Button
+                              type="button"
+                              variant={tracked ? "secondary" : "outline"}
+                              size="sm"
+                              className={cn(
+                                "mt-2 flex h-10 w-full min-w-0 items-center justify-center gap-2 rounded-lg px-2 text-xs font-medium sm:text-[13px]",
+                                tracked &&
+                                  "border-violet-400/40 bg-violet-500/15 text-foreground",
+                              )}
+                              title={
+                                tracked
+                                  ? "Remove from Coming up in Your theatre"
+                                  : "Save to Coming up in Your theatre"
                               }
-                              alt=""
-                              fill
-                              placeholderGradient="from-zinc-700 to-zinc-900"
-                              className="object-cover transition duration-300 group-hover:scale-[1.03]"
-                              sizes="(max-width:640px) 42vw, 160px"
-                            />
-                            <div className="pointer-events-none absolute right-1.5 top-1.5 flex items-center gap-0.5 rounded-full bg-orange-950/85 px-1.5 py-0.5 text-[10px] font-semibold text-orange-100 ring-1 ring-orange-400/35 backdrop-blur-sm">
-                              <Flame className="size-3 shrink-0 text-orange-400" />
-                              {formatScheduleHype(item)}
-                            </div>
-                            <div className="pointer-events-none absolute bottom-1.5 left-1.5 rounded bg-black/70 px-1 py-0.5 text-[9px] font-medium uppercase tracking-wide text-white/90">
-                              {item.mediaType === "tv" ? "Show" : "Film"}
-                            </div>
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                void toggleReleaseWatch(item);
+                              }}
+                            >
+                              <Bookmark
+                                className={cn("size-3.5 shrink-0", tracked && "fill-current")}
+                                aria-hidden
+                              />
+                              <span className="truncate">
+                                {tracked ? "Remove from Coming up" : "Save to Coming up"}
+                              </span>
+                            </Button>
+                            <button
+                              type="button"
+                              onClick={() => void openItem(item)}
+                              className="mt-2 w-full text-left"
+                            >
+                              <p className="line-clamp-2 text-xs font-semibold leading-snug text-foreground">
+                                {item.title}
+                              </p>
+                              <p className="text-[10px] text-muted-foreground">
+                                {item.kindLabel} · ★ {item.voteAverage.toFixed(1)}
+                              </p>
+                              <p className="mt-0.5 line-clamp-2 text-[10px] leading-snug text-muted-foreground/90">
+                                {item.releaseVenueLabel}
+                              </p>
+                            </button>
                           </div>
-                          <p className="mt-2 line-clamp-2 text-xs font-semibold leading-snug text-foreground">
-                            {item.title}
-                          </p>
-                          <p className="text-[10px] text-muted-foreground">
-                            {item.kindLabel} · ★ {item.voteAverage.toFixed(1)}
-                          </p>
-                          <p className="mt-0.5 line-clamp-2 text-[10px] leading-snug text-muted-foreground/90">
-                            {item.releaseVenueLabel}
-                          </p>
-                        </button>
-                      ))}
+                        );
+                      })}
                     </div>
                   </section>
                 );
@@ -372,6 +559,15 @@ export function ReleasesPage() {
           )}
         </div>
       </main>
+
+      {toastMsg ? (
+        <div
+          className="fixed left-1/2 z-50 max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-full border border-border/70 bg-popover px-4 py-2.5 text-center text-sm text-popover-foreground shadow-[var(--app-shadow-card)] [bottom:max(1.25rem,calc(0.75rem+env(safe-area-inset-bottom)))]"
+          role="status"
+        >
+          {toastMsg}
+        </div>
+      ) : null}
     </div>
   );
 }

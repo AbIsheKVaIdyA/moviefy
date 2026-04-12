@@ -40,10 +40,7 @@ export type MovieEnrichResponse = {
   imdbId: string | null;
   streaming: StreamingEntry[];
   youtubeReviews: YoutubeReview[];
-  /** Fan clips / iconic moments / meme-adjacent hits (YouTube search; excludes review picks). */
-  youtubeMemeClips: YoutubeReview[];
   fallbackYoutubeSearchUrl: string;
-  fallbackYoutubeMemeSearchUrl: string;
   /** TMDB-linked YouTube video id for official trailer/teaser embed */
   trailerYoutubeKey: string | null;
   /** Wide backdrop image URL when TMDB provides `backdrop_path` */

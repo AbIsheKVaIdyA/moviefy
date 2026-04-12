@@ -5,11 +5,13 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { PosterImage } from "@/components/poster-image";
 import {
+  Bookmark,
   CalendarDays,
   ChevronDown,
   ChevronUp,
   Clapperboard,
   Compass,
+  Film,
   Globe,
   Heart,
   Home,
@@ -88,10 +90,23 @@ import type {
   SearchSuggestResponse,
 } from "@/lib/search-suggest-types";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
+import { AddToPlaylistDialog } from "@/components/add-to-playlist-dialog";
 import { MovieDetailDialog } from "@/components/movie-detail-dialog";
 import { SearchSuggestDropdown } from "@/components/search-suggest-dropdown";
+import {
+  fetchUserReleaseWatchlist,
+  RELEASE_WATCHLIST_CHANGED_EVENT,
+  removeUserReleaseWatchlist,
+  type ReleaseWatchlistRow,
+} from "@/lib/supabase/release-watchlist-service";
+import {
+  releaseWatchlistRowToScheduleItem,
+  scheduleItemToMovie,
+} from "@/lib/releases-schedule-mappers";
+import { tmdbPosterUrl } from "@/lib/tmdb-image";
 
 type ListSort = "rank" | "year" | "title" | "genre";
+type LibraryNav = "playlists" | "saved" | "coming";
 
 type LibraryKindFilter = "all" | "collection" | "watched";
 
@@ -142,13 +157,12 @@ export function MoviefyApp() {
   const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null);
   const [savedIds, setSavedIds] = useState<Set<string>>(() => new Set());
   const [savedMovies, setSavedMovies] = useState<Movie[]>([]);
-  const [libraryNav, setLibraryNav] = useState<"playlists" | "saved">(
-    "playlists",
-  );
+  const [libraryNav, setLibraryNav] = useState<LibraryNav>("playlists");
+  const [releaseWatchlist, setReleaseWatchlist] = useState<
+    ReleaseWatchlistRow[]
+  >([]);
   const [pickListOpen, setPickListOpen] = useState(false);
   const [pickListMovie, setPickListMovie] = useState<Movie | null>(null);
-  const [moviePendingForNewList, setMoviePendingForNewList] =
-    useState<Movie | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQ, setSearchQ] = useState("");
   const debouncedSearchQ = useDebouncedValue(searchQ, 300);
@@ -173,16 +187,18 @@ export function MoviefyApp() {
     setLibraryLoading(true);
     try {
       const uid = session.user.id;
-      const [pl, saved, name, savedList] = await Promise.all([
+      const [pl, saved, name, savedList, coming] = await Promise.all([
         fetchUserPlaylists(client, uid),
         fetchSavedMovieKeys(client, uid),
         fetchProfileDisplayName(client, uid),
         fetchSavedMoviesForUser(client, uid),
+        fetchUserReleaseWatchlist(client, uid),
       ]);
       setPlaylists(pl);
       setSavedIds(saved);
       setDisplayName(name);
       setSavedMovies(savedList);
+      setReleaseWatchlist(coming);
       setActiveId((prev) => {
         if (typeof window !== "undefined") {
           const fromUrl = new URLSearchParams(window.location.search).get(
@@ -202,6 +218,15 @@ export function MoviefyApp() {
     if (!ready || !client || !session?.user) return;
     void loadLibrary();
   }, [ready, client, session?.user?.id, loadLibrary]);
+
+  useEffect(() => {
+    const on = () => {
+      void loadLibrary();
+    };
+    window.addEventListener(RELEASE_WATCHLIST_CHANGED_EVENT, on);
+    return () =>
+      window.removeEventListener(RELEASE_WATCHLIST_CHANGED_EVENT, on);
+  }, [loadLibrary]);
 
   useEffect(() => {
     const ctrl = new AbortController();
@@ -232,6 +257,8 @@ export function MoviefyApp() {
     );
   }, [selectedMovie, primaryWatchedPlaylist]);
 
+  const signInNextPath = pathname || "/app";
+
   const toggleDetailWatched = useCallback(async () => {
     if (!client || !session?.user || !selectedMovie) return;
     setWatchedDialogBusy(true);
@@ -255,6 +282,40 @@ export function MoviefyApp() {
       setWatchedDialogBusy(false);
     }
   }, [client, session?.user, selectedMovie, selectedInWatched, loadLibrary]);
+
+  async function openComingRow(row: ReleaseWatchlistRow) {
+    const item = releaseWatchlistRowToScheduleItem(row);
+    const movie = scheduleItemToMovie(item);
+    const media = row.mediaType === "tv" ? "tv" : "movie";
+    const href = movieToDetailPageHref(movie, "releases", media);
+    if (!href) {
+      pushToast("Could not open this title.");
+      return;
+    }
+    await prefetchMovieEnrich(movie, media);
+    router.push(href);
+  }
+
+  async function removeComingRow(row: ReleaseWatchlistRow) {
+    if (!client || !session?.user) return;
+    const ok = await removeUserReleaseWatchlist(
+      client,
+      session.user.id,
+      row.tmdbId,
+      row.mediaType,
+    );
+    if (!ok) {
+      pushToast("Could not remove from Coming up");
+      return;
+    }
+    setReleaseWatchlist((prev) =>
+      prev.filter(
+        (r) =>
+          !(r.tmdbId === row.tmdbId && r.mediaType === row.mediaType),
+      ),
+    );
+    pushToast("Removed from Coming up");
+  }
 
   function selectMovie(movie: Movie) {
     setSelectedMovie(movie);
@@ -413,15 +474,11 @@ export function MoviefyApp() {
   }, [debouncedSearchQ, searchOpen]);
 
   const inActiveList = useMemo(() => {
-    if (!active || !selectedMovie) return false;
-    return active.movies.some(
-      (m) =>
-        m.id === selectedMovie.id ||
-        (m.tmdbId != null &&
-          m.tmdbId === selectedMovie.tmdbId &&
-          selectedMovie.tmdbId != null),
+    if (!selectedMovie) return false;
+    return playlists.some((p) =>
+      p.movies.some((m) => movieMatchesInPlaylistRow(m, selectedMovie)),
     );
-  }, [active, selectedMovie]);
+  }, [playlists, selectedMovie]);
 
   useEffect(() => {
     if (!toast) return;
@@ -455,18 +512,7 @@ export function MoviefyApp() {
       pushToast("Could not create playlist");
       return;
     }
-    const pending = moviePendingForNewList;
-    if (pending) {
-      const added = await addMovieToPlaylistDb(client, pl.id, pending);
-      pushToast(
-        added
-          ? `Playlist created — added “${pending.title}”`
-          : "Playlist created — we couldn’t add that title automatically.",
-      );
-      setMoviePendingForNewList(null);
-    } else {
-      pushToast("Playlist created");
-    }
+    pushToast("Playlist created");
     setNewName("");
     setNewDesc("");
     setNewPlaylistOpen(false);
@@ -663,6 +709,17 @@ export function MoviefyApp() {
               <CalendarDays className="size-4" />
               Release radar
             </Link>
+            <Link
+              href="/app/reels"
+              className={cn(
+                buttonVariants({ variant: "ghost" }),
+                "justify-start gap-2 text-sm",
+                pathname?.startsWith("/app/reels") && "bg-muted/70 text-foreground",
+              )}
+            >
+              <Film className="size-4" />
+              Meme reels
+            </Link>
             <button
               type="button"
               className={cn(
@@ -678,8 +735,25 @@ export function MoviefyApp() {
               <Heart className="size-4" />
               Saved
             </button>
+            <button
+              type="button"
+              className={cn(
+                buttonVariants({ variant: "ghost" }),
+                "w-full justify-start gap-2 text-sm",
+                libraryNav === "coming" && "bg-muted/70 text-foreground",
+              )}
+              onClick={() => {
+                setLibraryNav("coming");
+                if (pathname !== "/app") router.push("/app");
+                void loadLibrary();
+              }}
+            >
+              <Bookmark className="size-4" />
+              Coming up
+            </button>
           </div>
 
+          {libraryNav === "playlists" ? (
           <div className="mt-3 flex flex-wrap gap-1 px-2">
             {(
               [
@@ -703,7 +777,9 @@ export function MoviefyApp() {
               </Button>
             ))}
           </div>
+          ) : null}
 
+          {libraryNav === "playlists" ? (
           <div className="mt-4 px-2">
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -715,6 +791,7 @@ export function MoviefyApp() {
               />
             </div>
           </div>
+          ) : null}
 
           <ScrollArea className="mt-3 h-[calc(100dvh_-_240px_-_env(safe-area-inset-top)_-_env(safe-area-inset-bottom))] min-h-[12rem] px-1">
             <div className="space-y-1">
@@ -770,117 +847,131 @@ export function MoviefyApp() {
                 K
               </span>
             </button>
-            <div className="order-2 flex shrink-0 items-center gap-1 sm:order-3 sm:gap-2">
-              <Link
-                href="/app"
-                aria-label="Your theatre"
-                className={cn(
-                  buttonVariants({ variant: "secondary", size: "sm" }),
-                  "gap-1.5 border-0 bg-muted/50 text-foreground hover:bg-muted/70 lg:hidden",
-                  libraryNav === "playlists" && "ring-1 ring-border/80",
-                )}
-                onClick={() => setLibraryNav("playlists")}
-              >
-                <Home className="size-4" />
-                <span className="hidden sm:inline">Your theatre</span>
-              </Link>
-              <button
-                type="button"
-                aria-label="Saved movies"
-                className={cn(
-                  buttonVariants({ variant: "secondary", size: "sm" }),
-                  "gap-1.5 border-0 bg-muted/50 text-foreground hover:bg-muted/70 lg:hidden",
-                  libraryNav === "saved" && "ring-1 ring-primary/50",
-                )}
-                onClick={() => {
-                  setLibraryNav("saved");
-                  void loadLibrary();
-                }}
-              >
-                <Heart className="size-4" />
-                <span className="hidden sm:inline">Saved</span>
-              </button>
-              <Link
-                href="/app/explore"
-                className={cn(
-                  buttonVariants({ variant: "secondary", size: "sm" }),
-                  "gap-1.5 border-0 bg-muted/50 text-foreground hover:bg-muted/70 lg:hidden",
-                )}
-              >
-                <Compass className="size-4" />
-                Explore
-              </Link>
-              <Link
-                href="/app/releases"
-                className={cn(
-                  buttonVariants({ variant: "secondary", size: "sm" }),
-                  "gap-1.5 border-0 bg-muted/50 text-foreground hover:bg-muted/70 lg:hidden",
-                )}
-              >
-                <CalendarDays className="size-4" />
-                <span className="hidden sm:inline">Radar</span>
-              </Link>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                aria-label="Sign out"
-                className="gap-1.5 text-muted-foreground hover:bg-muted/50 hover:text-foreground"
-                onClick={() => {
-                  void client?.auth.signOut().then(() => {
-                    router.push("/?auth=sign-in");
-                    router.refresh();
-                  });
-                }}
-              >
-                <LogOut className="size-4 shrink-0" />
-                <span className="hidden sm:inline">Sign out</span>
-              </Button>
-              <DropdownMenu>
-                <DropdownMenuTrigger
-                  aria-label="Account menu"
+            <div className="order-2 flex min-w-0 flex-1 items-center justify-between gap-2 sm:order-3">
+              <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto sm:gap-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                <Link
+                  href="/app"
+                  aria-label="Your theatre"
                   className={cn(
-                    buttonVariants({ variant: "ghost", size: "icon-sm" }),
-                    "rounded-full text-foreground hover:bg-muted/50",
+                    buttonVariants({ variant: "secondary", size: "sm" }),
+                    "shrink-0 gap-1.5 border-0 bg-muted/50 text-foreground hover:bg-muted/70 lg:hidden",
+                    libraryNav === "playlists" && "ring-1 ring-border/80",
+                  )}
+                  onClick={() => setLibraryNav("playlists")}
+                >
+                  <Home className="size-4" />
+                  <span className="hidden sm:inline">Your theatre</span>
+                </Link>
+                <button
+                  type="button"
+                  aria-label="Saved movies"
+                  className={cn(
+                    buttonVariants({ variant: "secondary", size: "sm" }),
+                    "shrink-0 gap-1.5 border-0 bg-muted/50 text-foreground hover:bg-muted/70 lg:hidden",
+                    libraryNav === "saved" && "ring-1 ring-primary/50",
+                  )}
+                  onClick={() => {
+                    setLibraryNav("saved");
+                    void loadLibrary();
+                  }}
+                >
+                  <Heart className="size-4" />
+                  <span className="hidden sm:inline">Saved</span>
+                </button>
+                <button
+                  type="button"
+                  aria-label="Coming up from Release radar"
+                  className={cn(
+                    buttonVariants({ variant: "secondary", size: "sm" }),
+                    "shrink-0 gap-1.5 border-0 bg-muted/50 text-foreground hover:bg-muted/70 lg:hidden",
+                    libraryNav === "coming" && "ring-1 ring-violet-400/50",
+                  )}
+                  onClick={() => {
+                    setLibraryNav("coming");
+                    void loadLibrary();
+                  }}
+                >
+                  <Bookmark className="size-4" />
+                  <span className="hidden sm:inline">Coming</span>
+                </button>
+                <Link
+                  href="/app/explore"
+                  className={cn(
+                    buttonVariants({ variant: "secondary", size: "sm" }),
+                    "shrink-0 gap-1.5 border-0 bg-muted/50 text-foreground hover:bg-muted/70 lg:hidden",
                   )}
                 >
-                  <Avatar size="sm">
-                    <AvatarFallback>
-                      {avatarLetter(displayName, session)}
-                    </AvatarFallback>
-                  </Avatar>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent
-                  align="end"
-                  sideOffset={8}
-                  className="min-w-48 border-border/60 bg-popover text-popover-foreground"
+                  <Compass className="size-4" />
+                  Explore
+                </Link>
+                <Link
+                  href="/app/releases"
+                  className={cn(
+                    buttonVariants({ variant: "secondary", size: "sm" }),
+                    "shrink-0 gap-1.5 border-0 bg-muted/50 text-foreground hover:bg-muted/70 lg:hidden",
+                  )}
                 >
-                  <DropdownMenuLabel className="text-muted-foreground">
-                    Account
-                  </DropdownMenuLabel>
-                  <DropdownMenuItem
-                    disabled
-                    className="text-muted-foreground focus:bg-muted/50 focus:text-foreground"
+                  <CalendarDays className="size-4" />
+                  <span className="hidden sm:inline">Radar</span>
+                </Link>
+                <Link
+                  href="/app/reels"
+                  className={cn(
+                    buttonVariants({ variant: "secondary", size: "sm" }),
+                    "shrink-0 gap-1.5 border-0 bg-muted/50 text-foreground hover:bg-muted/70 lg:hidden",
+                  )}
+                >
+                  <Film className="size-4" />
+                  <span className="hidden sm:inline">Reels</span>
+                </Link>
+              </div>
+              <div className="shrink-0">
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    aria-label="Account menu"
+                    className={cn(
+                      buttonVariants({ variant: "ghost", size: "icon-sm" }),
+                      "rounded-full text-foreground hover:bg-muted/50",
+                    )}
                   >
-                    <Settings className="size-4 opacity-60" />
-                    Settings
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator className="bg-border/60" />
-                  <DropdownMenuItem
-                    variant="destructive"
-                    className="focus:bg-red-950/50"
-                    onClick={() => {
-                      void client?.auth.signOut().then(() => {
-                        router.push("/?auth=sign-in");
-                        router.refresh();
-                      });
-                    }}
+                    <Avatar size="sm">
+                      <AvatarFallback>
+                        {avatarLetter(displayName, session)}
+                      </AvatarFallback>
+                    </Avatar>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    align="end"
+                    sideOffset={8}
+                    className="min-w-48 border-border/60 bg-popover text-popover-foreground"
                   >
-                    <LogOut className="size-4" />
-                    Sign out
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                    <DropdownMenuLabel className="text-muted-foreground">
+                      Account
+                    </DropdownMenuLabel>
+                    <DropdownMenuItem
+                      disabled
+                      className="text-muted-foreground focus:bg-muted/50 focus:text-foreground"
+                    >
+                      <Settings className="size-4 opacity-60" />
+                      Settings
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator className="bg-border/60" />
+                    <DropdownMenuItem
+                      variant="destructive"
+                      className="focus:bg-red-950/50"
+                      onClick={() => {
+                        void client?.auth.signOut().then(() => {
+                          router.push("/?auth=sign-in");
+                          router.refresh();
+                        });
+                      }}
+                    >
+                      <LogOut className="size-4" />
+                      Sign out
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             </div>
           </header>
 
@@ -943,6 +1034,95 @@ export function MoviefyApp() {
                     </div>
                   )}
                 </section>
+              ) : libraryNav === "coming" ? (
+                <section className="rounded-xl border border-violet-500/25 bg-gradient-to-br from-violet-950/20 via-card/95 to-card p-5 shadow-[var(--app-shadow-card)]">
+                  <div className="mb-3.5 flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <h2 className="type-section-title">Coming up</h2>
+                      <p className="text-sm text-muted-foreground">
+                        Saved from Release radar — bookmark a title to remember its drop date.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Link
+                        href="/app/releases"
+                        className={cn(
+                          buttonVariants({ size: "sm", variant: "secondary" }),
+                        )}
+                      >
+                        Release radar
+                      </Link>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setLibraryNav("playlists")}
+                      >
+                        Playlists
+                      </Button>
+                    </div>
+                  </div>
+                  {releaseWatchlist.length === 0 ? (
+                    <div className="py-8 text-center text-sm text-muted-foreground">
+                      Nothing here yet. Open{" "}
+                      <Link
+                        href="/app/releases"
+                        className="font-medium text-primary underline-offset-4 hover:underline"
+                      >
+                        Release radar
+                      </Link>{" "}
+                      and tap the bookmark on a poster.
+                    </div>
+                  ) : (
+                    <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+                      {releaseWatchlist.map((row) => (
+                        <div
+                          key={`${row.mediaType}-${row.tmdbId}`}
+                          className="relative rounded-lg border border-border/40 bg-muted/35 p-2"
+                        >
+                          <button
+                            type="button"
+                            onClick={() => void openComingRow(row)}
+                            className="w-full text-left"
+                          >
+                            <div className="relative aspect-[2/3] overflow-hidden rounded-md bg-zinc-800">
+                              <PosterImage
+                                src={
+                                  row.posterPath
+                                    ? tmdbPosterUrl(row.posterPath, "w342")
+                                    : ""
+                                }
+                                alt=""
+                                fill
+                                placeholderGradient="from-zinc-700 to-zinc-900"
+                                className="object-cover"
+                                sizes="160px"
+                              />
+                              <span className="pointer-events-none absolute bottom-1 left-1 rounded bg-black/70 px-1 py-0.5 text-[9px] font-medium uppercase text-white/90">
+                                {row.mediaType === "tv" ? "Show" : "Film"}
+                              </span>
+                            </div>
+                            <p className="mt-2 line-clamp-2 text-xs font-medium">
+                              {row.title}
+                            </p>
+                            <p className="text-[11px] text-muted-foreground">
+                              Releases {row.releaseDate}
+                            </p>
+                          </button>
+                          <Button
+                            type="button"
+                            size="icon-sm"
+                            variant="ghost"
+                            className="absolute right-1 top-1 text-muted-foreground hover:text-rose-300"
+                            aria-label={`Remove ${row.title} from Coming up`}
+                            onClick={() => void removeComingRow(row)}
+                          >
+                            <X className="size-4" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </section>
               ) : (
               <>
               <section className="rounded-xl border border-border/60 bg-gradient-to-b from-card via-card/95 to-muted/25 p-5 shadow-[var(--app-shadow-card)] sm:p-6">
@@ -953,8 +1133,8 @@ export function MoviefyApp() {
                   {greetingFirstName(displayName, session)}
                 </h1>
                 <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground">
-                  This space is only your playlists and saved films. Trending, genres, meme
-                  picks, and community lists live on{" "}
+                  This space is your playlists, saved films, and coming-up bookmarks. Trending,
+                  genres, meme reels, and community lists live on{" "}
                   <Link
                     href="/app/explore"
                     className="font-medium text-primary underline-offset-4 hover:underline"
@@ -969,6 +1149,9 @@ export function MoviefyApp() {
                   </Badge>
                   <Badge variant="secondary" className="border-border/50 bg-muted/50 text-foreground">
                     {savedIds.size} saved
+                  </Badge>
+                  <Badge variant="secondary" className="border-border/50 bg-muted/50 text-foreground">
+                    {releaseWatchlist.length} coming up
                   </Badge>
                   <Badge variant="secondary" className="border-border/50 bg-muted/50 text-foreground">
                     {active
@@ -1358,110 +1541,23 @@ export function MoviefyApp() {
         watchedBusy={watchedDialogBusy}
       />
 
-      <Dialog
+      <AddToPlaylistDialog
         open={pickListOpen}
         onOpenChange={(o) => {
           setPickListOpen(o);
           if (!o) setPickListMovie(null);
         }}
-      >
-        <DialogContent className="border-border/80 bg-[#1e1e1e] text-white sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Add to playlist</DialogTitle>
-            <DialogDescription>
-              {pickListMovie
-                ? `Choose a list for “${pickListMovie.title}”, or create a new one.`
-                : "Choose a list for this title."}
-            </DialogDescription>
-          </DialogHeader>
-          <ScrollArea className="max-h-72">
-            {playlists.length === 0 ? (
-              <div className="space-y-3 py-2">
-                <p className="text-sm text-muted-foreground">
-                  You do not have a playlist yet. Create one, then we will add this title.
-                </p>
-                <Button
-                  className="w-full"
-                  onClick={() => {
-                    setMoviePendingForNewList(pickListMovie);
-                    setPickListOpen(false);
-                    setPickListMovie(null);
-                    setNewPlaylistOpen(true);
-                  }}
-                >
-                  <Plus className="size-4" />
-                  Create playlist
-                </Button>
-              </div>
-            ) : (
-              <ul className="space-y-1 py-1">
-                {playlists.map((p) => (
-                  <li key={p.id}>
-                    <button
-                      type="button"
-                      className="flex w-full items-center gap-3 rounded-md px-2 py-2.5 text-left text-sm hover:bg-white/5"
-                      onClick={() => {
-                        if (!client || !pickListMovie) return;
-                        void (async () => {
-                          const ok = await addMovieToPlaylistDb(
-                            client,
-                            p.id,
-                            pickListMovie,
-                          );
-                          if (!ok) {
-                            pushToast("Could not add to that list");
-                            return;
-                          }
-                          setPickListOpen(false);
-                          setPickListMovie(null);
-                          await loadLibrary();
-                          setLibraryNav("playlists");
-                          setActiveId(p.id);
-                          pushToast(`Added to “${p.name}”`);
-                        })();
-                      }}
-                    >
-                      <div className="relative h-10 w-7 shrink-0 overflow-hidden rounded bg-zinc-800">
-                        <PosterImage
-                          src={p.movies[0]?.posterImage ?? ""}
-                          alt=""
-                          fill
-                          placeholderGradient={
-                            p.movies[0]?.posterClass ?? "from-zinc-700 to-zinc-900"
-                          }
-                          className="object-cover"
-                          sizes="28px"
-                        />
-                      </div>
-                      <span className="min-w-0 flex-1 truncate font-medium">{p.name}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {p.movies.length} titles
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </ScrollArea>
-          {playlists.length > 0 ? (
-            <DialogFooter className="flex-col gap-2 sm:flex-col">
-              <Button
-                variant="outline"
-                className="w-full border-white/15"
-                onClick={() => {
-                  setMoviePendingForNewList(pickListMovie);
-                  setPickListOpen(false);
-                  setPickListMovie(null);
-                  setNewPlaylistOpen(true);
-                }}
-              >
-                <Plus className="size-4" />
-                Create new playlist
-              </Button>
-            </DialogFooter>
-          ) : null}
-        </DialogContent>
-      </Dialog>
+        movie={pickListMovie}
+        client={client}
+        userId={session?.user?.id ?? null}
+        onNotify={pushToast}
+        onUpdated={async () => {
+          await loadLibrary();
+          setLibraryNav("playlists");
+        }}
+        onAddedToPlaylist={(id) => setActiveId(id)}
+        signInNextPath={signInNextPath}
+      />
 
       {toast && (
         <div
