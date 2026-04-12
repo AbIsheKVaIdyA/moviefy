@@ -78,6 +78,17 @@ create index if not exists playlist_items_playlist_idx on public.playlist_items 
 create index if not exists playlist_likes_playlist_idx on public.playlist_likes (playlist_id);
 create index if not exists saved_movies_user_idx on public.saved_movies (user_id);
 
+-- Explore “Recently viewed” (signed-in users; merged with device localStorage in the app)
+create table if not exists public.explore_recent_opens (
+  user_id uuid not null references auth.users (id) on delete cascade,
+  movie_id uuid not null references public.movies (id) on delete cascade,
+  opened_at timestamptz not null default now(),
+  primary key (user_id, movie_id)
+);
+
+create index if not exists explore_recent_opens_user_opened_idx
+  on public.explore_recent_opens (user_id, opened_at desc);
+
 -- Per-user tier + short review (community totals via RPC; no design lift from other sites)
 create table if not exists public.movie_user_takes (
   user_id uuid not null references auth.users (id) on delete cascade,
@@ -221,6 +232,7 @@ alter table public.movies enable row level security;
 alter table public.playlists enable row level security;
 alter table public.playlist_items enable row level security;
 alter table public.saved_movies enable row level security;
+alter table public.explore_recent_opens enable row level security;
 alter table public.movie_user_takes enable row level security;
 alter table public.playlist_follows enable row level security;
 alter table public.playlist_likes enable row level security;
@@ -303,6 +315,19 @@ create policy "saved_insert_own" on public.saved_movies for insert with check (a
 
 drop policy if exists "saved_delete_own" on public.saved_movies;
 create policy "saved_delete_own" on public.saved_movies for delete using (auth.uid() = user_id);
+
+-- Explore recent opens (per user; upsert updates opened_at)
+drop policy if exists "explore_recent_select_own" on public.explore_recent_opens;
+create policy "explore_recent_select_own" on public.explore_recent_opens for select using (auth.uid() = user_id);
+
+drop policy if exists "explore_recent_insert_own" on public.explore_recent_opens;
+create policy "explore_recent_insert_own" on public.explore_recent_opens for insert with check (auth.uid() = user_id);
+
+drop policy if exists "explore_recent_update_own" on public.explore_recent_opens;
+create policy "explore_recent_update_own" on public.explore_recent_opens for update using (auth.uid() = user_id);
+
+drop policy if exists "explore_recent_delete_own" on public.explore_recent_opens;
+create policy "explore_recent_delete_own" on public.explore_recent_opens for delete using (auth.uid() = user_id);
 
 -- Follows (only see your own follows; public follower counts live on playlists.follower_count)
 drop policy if exists "follows_select_own" on public.playlist_follows;

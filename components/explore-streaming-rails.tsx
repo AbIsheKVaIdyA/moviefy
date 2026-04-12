@@ -54,7 +54,9 @@ function RailHeader({
           a.bar,
         )}
       />
-      <h3 className="font-heading text-lg font-semibold text-white">{label}</h3>
+      <h3 className="font-heading text-lg font-semibold tracking-tight text-foreground">
+        {label}
+      </h3>
     </div>
   );
 }
@@ -70,7 +72,7 @@ function CarouselRail({
   return (
     <div
       className={cn(
-        "rounded-2xl border border-white/10 bg-[#101010] p-3 sm:p-4",
+        "rounded-2xl border border-border/70 bg-card/90 p-3 shadow-[var(--app-shadow-card)] sm:p-4",
         a.glow,
       )}
     >
@@ -99,10 +101,10 @@ function CarouselRail({
                   sizes="118px"
                 />
               </div>
-              <p className="mt-2 line-clamp-2 text-[11px] font-medium leading-snug text-white/90">
+              <p className="mt-2 line-clamp-2 text-[11px] font-medium leading-snug text-foreground">
                 {movie.title}
               </p>
-              <p className="text-[10px] text-white/40">
+              <p className="text-[10px] text-muted-foreground">
                 ★ {item.vote_average.toFixed(1)}
               </p>
             </button>
@@ -126,14 +128,14 @@ function HeroSplitRail({
   const hero = movieFromTmdbDiscoverItem(first);
   const side = rest.slice(0, 4);
   return (
-    <div className="rounded-2xl border border-white/10 bg-[#0f0f12] p-4 sm:p-5">
+    <div className="rounded-2xl border border-border/70 bg-card/80 p-4 shadow-[var(--app-shadow-card)] sm:p-5">
       <RailHeader label={rail.label} accent={rail.accent} />
       <div className="flex flex-col gap-4 lg:flex-row lg:items-stretch">
         <button
           type="button"
           onClick={() => onSelectMovie(hero)}
           className={cn(
-            "group relative flex min-h-0 flex-1 overflow-hidden rounded-2xl border border-white/10 bg-black/40 text-left ring-1 ring-white/5 transition hover:border-white/20",
+            "group relative flex min-h-0 flex-1 overflow-hidden rounded-2xl border border-border/60 bg-muted/25 text-left ring-1 ring-border/40 transition hover:border-border",
             a.glow,
           )}
         >
@@ -157,10 +159,10 @@ function HeroSplitRail({
             >
               Featured pick
             </span>
-            <p className="font-heading text-xl font-semibold text-white sm:text-2xl">
+            <p className="font-heading text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
               {hero.title}
             </p>
-            <p className="mt-2 text-sm text-white/50">
+            <p className="mt-2 text-sm text-muted-foreground">
               ★ {first.vote_average.toFixed(1)} · {first.vote_count.toLocaleString()}{" "}
               votes
             </p>
@@ -174,7 +176,7 @@ function HeroSplitRail({
                 key={item.id}
                 type="button"
                 onClick={() => onSelectMovie(movie)}
-                className="group flex gap-2 rounded-xl border border-white/10 bg-black/30 p-2 text-left transition hover:border-white/20"
+                className="group flex gap-2 rounded-xl border border-border/50 bg-muted/20 p-2 text-left transition hover:border-border/80 hover:bg-muted/35"
               >
                 <div className="relative h-16 w-11 shrink-0 overflow-hidden rounded-lg bg-zinc-800">
                   <PosterImage
@@ -187,10 +189,10 @@ function HeroSplitRail({
                   />
                 </div>
                 <div className="min-w-0 flex-1 py-0.5">
-                  <p className="line-clamp-2 text-xs font-medium leading-snug text-white">
+                  <p className="line-clamp-2 text-xs font-medium leading-snug text-foreground">
                     {movie.title}
                   </p>
-                  <p className="mt-1 text-[10px] text-white/40">
+                  <p className="mt-1 text-[10px] text-muted-foreground">
                     ★ {item.vote_average.toFixed(1)}
                   </p>
                 </div>
@@ -211,7 +213,7 @@ function TightStripRail({
   onSelectMovie: (m: Movie) => void;
 }) {
   return (
-    <div className="rounded-2xl border border-dashed border-white/15 bg-[#121212] px-3 py-4 sm:px-5">
+    <div className="rounded-2xl border border-dashed border-border/60 bg-muted/15 px-3 py-4 sm:px-5">
       <RailHeader label={rail.label} accent={rail.accent} />
       <div className="flex gap-2 overflow-x-auto pb-1 pt-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {rail.results.map((item) => {
@@ -221,7 +223,7 @@ function TightStripRail({
               key={item.id}
               type="button"
               onClick={() => onSelectMovie(movie)}
-              className="group flex w-[200px] shrink-0 gap-2.5 rounded-xl border border-white/10 bg-black/25 p-2 text-left transition hover:bg-black/40 sm:w-[220px]"
+              className="group flex w-[200px] shrink-0 gap-2.5 rounded-xl border border-border/50 bg-muted/20 p-2 text-left transition hover:bg-muted/35 sm:w-[220px]"
             >
               <div className="relative h-[5.25rem] w-[3.5rem] shrink-0 overflow-hidden rounded-lg bg-zinc-800">
                 <PosterImage
@@ -234,10 +236,10 @@ function TightStripRail({
                 />
               </div>
               <div className="min-w-0 flex-1 py-1">
-                <p className="line-clamp-2 text-xs font-semibold leading-snug text-white">
+                <p className="line-clamp-2 text-xs font-semibold leading-snug text-foreground">
                   {movie.title}
                 </p>
-                <p className="mt-1 text-[10px] text-white/45">
+                <p className="mt-1 text-[10px] text-muted-foreground">
                   {movie.year || "—"} · ★ {item.vote_average.toFixed(1)}
                 </p>
               </div>
@@ -258,7 +260,7 @@ function PosterGridRail({
 }) {
   const slice = rail.results.slice(0, 8);
   return (
-    <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-[#141418] to-[#0c0c0e] p-4 sm:p-6">
+    <div className="rounded-2xl border border-border/70 bg-gradient-to-br from-card via-card/90 to-muted/20 p-4 shadow-[var(--app-shadow-card)] sm:p-6">
       <RailHeader label={rail.label} accent={rail.accent} />
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
         {slice.map((item) => {
@@ -280,7 +282,7 @@ function PosterGridRail({
                   sizes="(max-width:768px) 45vw, 160px"
                 />
               </div>
-              <p className="mt-2 line-clamp-2 text-[11px] font-medium text-white/90">
+              <p className="mt-2 line-clamp-2 text-[11px] font-medium text-foreground">
                 {movie.title}
               </p>
             </button>
@@ -316,7 +318,7 @@ export function ExploreStreamingRails({ onSelectMovie }: Props) {
 
   if (loading) {
     return (
-      <div className="flex items-center gap-2 rounded-2xl border border-white/10 bg-[#101010] px-4 py-10 text-sm text-white/45">
+      <div className="flex items-center gap-2 rounded-2xl border border-border/70 bg-card/80 px-4 py-10 text-sm text-muted-foreground shadow-[var(--app-shadow-card)]">
         <Loader2 className="size-5 animate-spin" />
         Loading streaming charts…
       </div>
@@ -325,14 +327,14 @@ export function ExploreStreamingRails({ onSelectMovie }: Props) {
 
   if (!rails?.length) {
     return (
-      <p className="rounded-2xl border border-white/10 bg-[#101010] px-4 py-8 text-center text-sm text-white/45">
+      <p className="rounded-2xl border border-border/70 bg-card/80 px-4 py-8 text-center text-sm text-muted-foreground shadow-[var(--app-shadow-card)]">
         Add TMDB_API_KEY to show Netflix, Prime, Hulu, and Disney+ highlights.
       </p>
     );
   }
 
   return (
-    <div className="space-y-10">
+    <div className="space-y-12">
       {rails.map((rail, i) => {
         if (!rail.results.length) return null;
         const variant = i % 4;

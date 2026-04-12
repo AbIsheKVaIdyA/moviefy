@@ -48,7 +48,16 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useSupabaseApp } from "@/components/supabase-app-provider";
-import { pushExploreRecent } from "@/lib/explore-recent-storage";
+import {
+  mergeExploreRecentMovies,
+  pushExploreRecent,
+  readExploreRecentOpens,
+  type ExploreRecentOpen,
+} from "@/lib/explore-recent-storage";
+import {
+  fetchExploreRecentOpens,
+  upsertExploreRecentOpen,
+} from "@/lib/supabase/explore-recent-service";
 import {
   clonePublicPlaylistForUser,
   fetchFollowedPlaylistIds,
@@ -74,6 +83,8 @@ import { movieFromTmdbDiscoverItem } from "@/lib/tmdb-genre-map";
 import { tmdbGenreLabels } from "@/lib/tmdb-genre-labels";
 import { cn } from "@/lib/utils";
 import { SearchSuggestDropdown } from "@/components/search-suggest-dropdown";
+
+const WATCHLIST_SESSION_CACHE_PREFIX = "moviefy_explore_watchlist_v1_";
 
 function talkOfTownLabel(item: TmdbDiscoverItem): string {
   const rd = item.release_date;
@@ -116,7 +127,7 @@ function CommunityPlaylistCard({
 }) {
   const cover = item.movies[0];
   return (
-    <div className="group flex w-[280px] shrink-0 flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#1a1a1a] transition hover:border-white/20 hover:shadow-lg hover:shadow-black/40 sm:w-[300px]">
+    <div className="group flex w-[280px] shrink-0 flex-col overflow-hidden rounded-2xl border border-border/70 bg-card text-card-foreground shadow-[var(--app-shadow-card)] transition hover:border-border hover:shadow-[var(--app-shadow-card)] sm:w-[300px]">
       <div className="relative aspect-[16/10] overflow-hidden bg-zinc-900">
         {cover ? (
           <PosterImage
@@ -140,25 +151,27 @@ function CommunityPlaylistCard({
           </span>
         </div>
       </div>
-      <div className="flex flex-1 flex-col gap-2 p-4">
+      <div className="flex flex-1 flex-col gap-2.5 p-4">
         <div>
-          <h3 className="font-heading text-base font-semibold leading-snug text-white line-clamp-2">
+          <h3 className="font-heading text-base font-semibold leading-snug text-foreground line-clamp-2">
             {item.name}
           </h3>
-          <p className="mt-1 text-xs text-white/50 line-clamp-2">{item.description}</p>
+          <p className="mt-1 text-xs leading-relaxed text-muted-foreground line-clamp-2">
+            {item.description}
+          </p>
         </div>
-        <p className="text-xs text-white/45">
-          By <span className="text-white/70">{item.ownerName}</span>{" "}
-          <span className="text-primary/90">{item.ownerHandle}</span>
+        <p className="text-xs text-muted-foreground">
+          By <span className="text-foreground/90">{item.ownerName}</span>{" "}
+          <span className="text-primary">{item.ownerHandle}</span>
         </p>
-        <p className="text-[11px] text-white/40">{item.movies.length} films</p>
+        <p className="text-[11px] text-muted-foreground/90">{item.movies.length} films</p>
         <div className="mt-auto flex flex-wrap gap-2 pt-1">
           <Button
             type="button"
             size="sm"
             variant={liked ? "secondary" : "outline"}
             className={cn(
-              "h-8 shrink-0 border-white/15 px-3 text-xs",
+              "h-8 shrink-0 border-border/80 px-3 text-xs",
               liked && "border-transparent text-rose-200",
             )}
             title={liked ? "Unlike" : "Like"}
@@ -175,7 +188,7 @@ function CommunityPlaylistCard({
             size="sm"
             variant={following ? "secondary" : "outline"}
             className={cn(
-              "h-8 min-w-0 flex-1 border-white/15 text-xs",
+              "h-8 min-w-0 flex-1 border-border/80 text-xs",
               following && "border-transparent",
             )}
             onClick={() => {
@@ -238,6 +251,10 @@ export function ExplorePage() {
   const [watchlistMovies, setWatchlistMovies] = useState<Movie[]>([]);
   const [watchlistLoading, setWatchlistLoading] = useState(false);
   const [exploreLsTick, setExploreLsTick] = useState(0);
+  const [serverExploreRecentOpens, setServerExploreRecentOpens] = useState<
+    ExploreRecentOpen[]
+  >([]);
+  const [exploreRecentLoading, setExploreRecentLoading] = useState(false);
   const debouncedSearch = useDebouncedValue(searchQuery, 300);
   const [suggestData, setSuggestData] = useState<SearchSuggestResponse | null>(
     null,
@@ -290,14 +307,58 @@ export function ExplorePage() {
       setWatchlistLoading(false);
       return;
     }
+    const uid = session.user.id;
+    try {
+      const raw = sessionStorage.getItem(
+        `${WATCHLIST_SESSION_CACHE_PREFIX}${uid}`,
+      );
+      if (raw) {
+        const parsed = JSON.parse(raw) as unknown;
+        if (Array.isArray(parsed) && parsed.length) {
+          setWatchlistMovies(parsed as Movie[]);
+        }
+      }
+    } catch {
+      /* ignore */
+    }
     let cancelled = false;
     setWatchlistLoading(true);
-    void fetchSavedMoviesForUser(client, session.user.id)
+    void fetchSavedMoviesForUser(client, uid)
       .then((rows) => {
-        if (!cancelled) setWatchlistMovies(rows);
+        if (!cancelled) {
+          setWatchlistMovies(rows);
+          try {
+            sessionStorage.setItem(
+              `${WATCHLIST_SESSION_CACHE_PREFIX}${uid}`,
+              JSON.stringify(rows),
+            );
+          } catch {
+            /* ignore */
+          }
+        }
       })
       .finally(() => {
         if (!cancelled) setWatchlistLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [ready, client, session?.user?.id]);
+
+  useEffect(() => {
+    if (!ready || !client || !session?.user) {
+      setServerExploreRecentOpens([]);
+      setExploreRecentLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setExploreRecentLoading(true);
+    void fetchExploreRecentOpens(client, session.user.id)
+      .then((rows) => {
+        if (!cancelled) setServerExploreRecentOpens(rows);
+      })
+      .finally(() => {
+        if (!cancelled) setExploreRecentLoading(false);
       });
     return () => {
       cancelled = true;
@@ -458,8 +519,20 @@ export function ExplorePage() {
     [communityPlaylists, followedIds],
   );
 
+  const mergedExploreRecentMovies = useMemo(
+    () =>
+      mergeExploreRecentMovies(
+        serverExploreRecentOpens,
+        readExploreRecentOpens(),
+      ),
+    [serverExploreRecentOpens, exploreLsTick],
+  );
+
   function selectMovie(movie: Movie) {
     pushExploreRecent(movie);
+    if (client && session?.user) {
+      void upsertExploreRecentOpen(client, session.user.id, movie);
+    }
     setExploreLsTick((n) => n + 1);
     const href = movieToDetailPageHref(movie, "explore");
     if (!href) {
@@ -565,13 +638,13 @@ export function ExplorePage() {
   }
 
   return (
-    <div className="min-h-dvh text-white motion-safe:transition-opacity motion-safe:duration-200">
-      <header className="sticky top-0 z-30 border-b border-border/80 bg-[oklch(0.12_0.04_250/0.58)] backdrop-blur-xl supports-[backdrop-filter]:bg-[oklch(0.12_0.04_250/0.42)]">
-        <div className="mx-auto flex max-w-[1400px] items-center justify-between gap-3 px-4 py-3">
+    <div className="min-h-dvh text-foreground motion-safe:transition-opacity motion-safe:duration-200">
+      <header className="sticky top-0 z-30 border-b border-border/60 bg-card/45 backdrop-blur-xl supports-[backdrop-filter]:bg-card/35">
+        <div className="mx-auto flex max-w-[1400px] items-center justify-between gap-3 px-4 py-3 sm:px-5">
           <div className="flex items-center gap-3">
             <Link
               href="/app"
-              className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/90 transition hover:bg-white/10"
+              className="flex items-center gap-2 rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-sm text-foreground/90 transition hover:bg-muted/50"
             >
               <ArrowLeft className="size-4" />
               <span className="hidden sm:inline">Your theatre</span>
@@ -581,8 +654,8 @@ export function ExplorePage() {
                 <Compass className="size-4" />
               </div>
               <div>
-                <p className="font-heading text-sm font-semibold">Explore</p>
-                <p className="text-[10px] text-white/45">Discovery hub</p>
+                <p className="type-kicker">Explore</p>
+                <p className="type-micro">Discovery hub</p>
               </div>
             </div>
           </div>
@@ -592,7 +665,7 @@ export function ExplorePage() {
               variant="ghost"
               size="sm"
               aria-label="Sign out"
-              className="gap-1.5 text-white/70 hover:bg-white/10 hover:text-white"
+              className="gap-1.5 text-muted-foreground hover:bg-muted/50 hover:text-foreground"
               onClick={() => {
                 void client?.auth.signOut().then(() => {
                   router.push("/?auth=sign-in");
@@ -605,7 +678,7 @@ export function ExplorePage() {
             </Button>
             <Link
               href="/app"
-              className="hidden items-center gap-2 text-sm text-white/60 transition hover:text-white sm:inline-flex"
+              className="hidden items-center gap-2 text-sm text-muted-foreground transition hover:text-foreground sm:inline-flex"
             >
               <Clapperboard className="size-4" />
               Your theatre
@@ -614,8 +687,8 @@ export function ExplorePage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-[1500px] px-4 py-10 sm:px-6 sm:py-12">
-        <section className="relative z-[25] rounded-3xl border border-sky-500/15 bg-gradient-to-br from-sky-950/50 via-emerald-950/25 to-red-950/35 p-6 pb-8 sm:p-10 sm:pb-10">
+      <main className="mx-auto max-w-[1500px] px-4 py-10 sm:px-6 sm:py-14">
+        <section className="relative z-[25] rounded-3xl border border-sky-500/20 bg-gradient-to-br from-sky-950/50 via-emerald-950/25 to-red-950/35 p-6 pb-8 shadow-[var(--app-shadow-card)] sm:p-10 sm:pb-10">
           {/* Clip only glows — search dropdown must not be clipped by overflow-hidden */}
           <div
             className="pointer-events-none absolute inset-0 overflow-hidden rounded-3xl"
@@ -625,10 +698,8 @@ export function ExplorePage() {
             <div className="absolute -left-20 bottom-0 h-56 w-56 rounded-full bg-emerald-500/10 blur-3xl" />
           </div>
           <div className="relative max-w-2xl">
-            <h1 className="font-heading text-3xl font-semibold tracking-tight text-white sm:text-4xl">
-              Find your next obsession
-            </h1>
-            <p className="mt-4 max-w-xl text-sm leading-[1.65] text-white/58 sm:text-[0.9375rem]">
+            <h1 className="type-hero">Find your next obsession</h1>
+            <p className="mt-4 max-w-xl text-sm leading-relaxed text-muted-foreground sm:text-[0.9375rem]">
               Search creators’ public lists, like and follow playlists you love, save them
               to your library — same energy as Spotify, built for film. Your own lists and
               saved titles stay on{" "}
@@ -641,12 +712,12 @@ export function ExplorePage() {
               (Home).
             </p>
             <div ref={searchWrapRef} className="relative z-[60] mt-6 max-w-xl">
-              <Search className="absolute left-3 top-1/2 z-[1] size-4 -translate-y-1/2 text-white/35" />
+              <Search className="absolute left-3 top-1/2 z-[1] size-4 -translate-y-1/2 text-muted-foreground/70" />
               <Input
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Movies, actors, genres, playlists…"
-                className="h-11 border-white/10 bg-black/30 pl-10 pr-10 text-white placeholder:text-white/35"
+                className="h-11 border-border/60 bg-background/40 pl-10 pr-10 text-foreground placeholder:text-muted-foreground/70"
                 aria-autocomplete="list"
                 aria-expanded={Boolean(searchQuery.trim())}
               />
@@ -654,7 +725,7 @@ export function ExplorePage() {
                 <button
                   type="button"
                   aria-label="Clear search"
-                  className="absolute right-2 top-1/2 z-[1] rounded-md p-1 text-white/40 transition hover:bg-white/10 hover:text-white"
+                  className="absolute right-2 top-1/2 z-[1] rounded-md p-1 text-muted-foreground transition hover:bg-muted/50 hover:text-foreground"
                   onClick={() => {
                     setSearchQuery("");
                     setSuggestData(null);
@@ -697,13 +768,11 @@ export function ExplorePage() {
 
         <div className="relative z-0">
         {castPerson ? (
-          <section className="mt-10 rounded-2xl border border-violet-400/25 bg-violet-950/25 p-5 shadow-[var(--shadow-elevated)] sm:p-6">
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <section className="mt-12 rounded-2xl border border-violet-400/30 bg-violet-950/20 p-5 shadow-[var(--app-shadow-card)] sm:p-6">
+            <div className="mb-3.5 flex flex-wrap items-center justify-between gap-2">
               <div>
-                <h2 className="font-heading text-lg font-semibold text-white sm:text-xl">
-                  With {castPerson.name}
-                </h2>
-                <p className="mt-1 text-xs text-white/50">
+                <h2 className="type-section-title">With {castPerson.name}</h2>
+                <p className="type-section-sub">
                   Discover titles featuring this performer (TMDB cast filter).
                 </p>
               </div>
@@ -711,7 +780,7 @@ export function ExplorePage() {
                 type="button"
                 size="sm"
                 variant="outline"
-                className="border-white/15 text-white hover:bg-white/10"
+                className="border-border/70 text-foreground hover:bg-muted/40"
                 onClick={() => clearCastPerson()}
               >
                 Clear
@@ -727,24 +796,25 @@ export function ExplorePage() {
         ) : null}
 
         <div className="mt-12 lg:grid lg:grid-cols-[minmax(0,1fr)_min(100%,320px)] lg:items-start lg:gap-10 xl:grid-cols-[minmax(0,1fr)_340px]">
-          <div className="min-w-0 space-y-12">
+          <div className="min-w-0 space-y-14">
         <ExplorePersonalRails
           watchlistMovies={watchlistMovies}
           watchlistLoading={watchlistLoading}
-          exploreLsTick={exploreLsTick}
+          recentMovies={mergedExploreRecentMovies}
+          recentLoading={exploreRecentLoading}
           onSelectMovie={selectMovie}
         />
 
         <ExploreCuratedMoods onSelectMovie={selectMovie} />
 
         <section>
-          <div className="mb-4 flex flex-wrap items-center gap-2">
+          <div className="mb-3.5 flex flex-wrap items-center gap-2.5">
             <Megaphone className="size-5 shrink-0 text-sky-400" aria-hidden />
             <div>
-              <h2 className="font-heading text-xl font-semibold">What’s buzzing</h2>
+              <h2 className="type-section-title">What’s buzzing</h2>
             </div>
           </div>
-          <div className="overflow-hidden rounded-2xl border border-sky-500/20 bg-gradient-to-b from-sky-950/30 via-card to-background p-4 sm:p-5">
+          <div className="overflow-hidden rounded-2xl border border-sky-500/25 bg-gradient-to-b from-sky-950/35 via-card/90 to-background/80 p-4 shadow-[var(--app-shadow-card)] sm:p-5">
             {townLoading ? (
               <div className="flex gap-3 overflow-x-auto pb-2 pt-1 sm:gap-4">
                 {Array.from({ length: 12 }).map((_, i) => (
@@ -752,7 +822,7 @@ export function ExplorePage() {
                 ))}
               </div>
             ) : townItems.length === 0 ? (
-              <p className="py-8 text-center text-sm text-white/45">
+              <p className="py-8 text-center text-sm text-muted-foreground">
                 Add TMDB_API_KEY to show the trending rail.
               </p>
             ) : (
@@ -828,33 +898,31 @@ export function ExplorePage() {
         </section>
 
         <section>
-          <div className="mb-4">
-            <h2 className="font-heading text-xl font-semibold text-white">
-              What&apos;s trending where you watch
-            </h2>
+          <div className="mb-3.5">
+            <h2 className="type-section-title">What&apos;s trending where you watch</h2>
           </div>
           <ExploreStreamingRails onSelectMovie={selectMovie} />
         </section>
 
         <section>
-          <div className="mb-4 flex flex-wrap items-center gap-2">
+          <div className="mb-3.5 flex flex-wrap items-center gap-2.5">
             <Laugh className="size-5 shrink-0 text-amber-400" aria-hidden />
             <div>
-              <h2 className="font-heading text-xl font-semibold">Meme hall of fame</h2>
+              <h2 className="type-section-title">Meme hall of fame</h2>
             </div>
           </div>
-          <div className="rounded-2xl border border-white/10 bg-card p-3 sm:p-4">
+          <div className="app-panel p-3 sm:p-4">
             {memeLoading ? (
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
                 {Array.from({ length: 8 }).map((_, i) => (
                   <div
                     key={i}
-                    className="aspect-[2/3] w-full animate-pulse rounded-xl bg-white/[0.06]"
+                    className="aspect-[2/3] w-full animate-pulse rounded-xl bg-muted/35"
                   />
                 ))}
               </div>
             ) : memeItems.length === 0 ? (
-              <p className="py-8 text-center text-sm text-white/45">
+              <p className="py-8 text-center text-sm text-muted-foreground">
                 Add TMDB_API_KEY to load curated meme-lineage titles, or check the
                 meme-spotlight API.
               </p>
@@ -865,7 +933,7 @@ export function ExplorePage() {
                     <button
                       type="button"
                       onClick={() => selectMovie(movie)}
-                      className="group flex h-full w-full flex-col rounded-2xl border border-white/10 bg-black/25 p-2 text-left transition hover:border-amber-400/40 hover:bg-black/35 sm:p-2.5"
+                      className="group flex h-full w-full flex-col rounded-2xl border border-border/50 bg-muted/20 p-2 text-left transition hover:border-amber-400/45 hover:bg-muted/35 sm:p-2.5"
                     >
                       <div className="relative aspect-[2/3] w-full overflow-hidden rounded-xl bg-zinc-900 ring-1 ring-white/5">
                         <PosterImage
@@ -883,10 +951,10 @@ export function ExplorePage() {
                         </div>
                       </div>
                       <div className="mt-2 flex min-h-[2.75rem] flex-1 flex-col justify-between gap-1">
-                        <p className="line-clamp-2 text-[11px] font-semibold leading-snug text-white/95 sm:text-xs">
+                        <p className="line-clamp-2 text-[11px] font-semibold leading-snug text-foreground sm:text-xs">
                           {movie.title}
                         </p>
-                        <p className="text-[10px] text-white/42">
+                        <p className="text-[10px] text-muted-foreground">
                           {movie.year || "—"}
                         </p>
                       </div>
@@ -899,9 +967,9 @@ export function ExplorePage() {
         </section>
 
         <section id="explore-browse-genre">
-          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div className="mb-3.5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <h2 className="font-heading text-xl font-semibold">Browse by genre</h2>
+              <h2 className="type-section-title">Browse by genre</h2>
             </div>
             <Select
               value={genreSort}
@@ -915,7 +983,7 @@ export function ExplorePage() {
                 }
               }}
             >
-              <SelectTrigger className="h-9 w-full border-white/10 bg-[#1a1a1a] text-xs sm:w-[200px]">
+              <SelectTrigger className="h-9 w-full border-border/60 bg-muted/35 text-xs sm:w-[200px]">
                 <SelectValue>
                   {GENRE_PAGE_SORT_LABEL[genreSort] ?? "Sort"}
                 </SelectValue>
@@ -933,7 +1001,7 @@ export function ExplorePage() {
               size="sm"
               variant={genre === "all" ? "secondary" : "outline"}
               className={cn(
-                "rounded-full border-white/15",
+                "rounded-full border-border/70",
                 genre === "all" && "border-transparent",
               )}
               onClick={() => setGenre("all")}
@@ -947,7 +1015,7 @@ export function ExplorePage() {
                 size="sm"
                 variant={genre === g ? "secondary" : "outline"}
                 className={cn(
-                  "rounded-full border-white/15",
+                  "rounded-full border-border/70",
                   genre === g && "border-transparent",
                 )}
                 onClick={() => setGenre((prev) => (prev === g ? "all" : g))}
@@ -957,14 +1025,14 @@ export function ExplorePage() {
             ))}
           </div>
 
-          <div className="mt-6 min-h-[120px] rounded-2xl border border-white/10 bg-card/80 p-4 sm:p-6">
+          <div className="mt-6 min-h-[120px] rounded-2xl border border-border/70 bg-card/85 p-4 shadow-[var(--app-shadow-card)] sm:p-6">
             {genreLoading ? (
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
                 {Array.from({ length: 10 }).map((_, i) => (
                   <div key={i} className="space-y-2">
-                    <div className="aspect-[2/3] w-full animate-pulse rounded-xl bg-white/[0.06]" />
-                    <div className="h-3 w-[75%] animate-pulse rounded bg-white/[0.06]" />
-                    <div className="h-2 w-[45%] animate-pulse rounded bg-white/[0.05]" />
+                    <div className="aspect-[2/3] w-full animate-pulse rounded-xl bg-muted/35" />
+                    <div className="h-3 w-[75%] animate-pulse rounded bg-muted/30" />
+                    <div className="h-2 w-[45%] animate-pulse rounded bg-muted/25" />
                   </div>
                 ))}
               </div>
@@ -973,7 +1041,7 @@ export function ExplorePage() {
                 Add TMDB_API_KEY to load genre results.
               </p>
             ) : genreResults.length === 0 ? (
-              <p className="text-center text-sm text-white/45">
+              <p className="text-center text-sm text-muted-foreground">
                 No titles matched. Try another genre or sort.
               </p>
             ) : (
@@ -1011,10 +1079,10 @@ export function ExplorePage() {
                           ) : null}
                         </div>
                       </div>
-                      <p className="mt-2 line-clamp-2 text-xs font-medium text-white/90">
+                      <p className="mt-2 line-clamp-2 text-xs font-medium text-foreground">
                         {movie.title}
                       </p>
-                      <p className="text-[10px] text-white/45">
+                      <p className="text-[10px] text-muted-foreground">
                         ★ {item.vote_average.toFixed(1)}
                       </p>
                     </button>
@@ -1025,14 +1093,14 @@ export function ExplorePage() {
           </div>
         </section>
 
-        <section className="rounded-2xl border border-white/10 bg-card p-4 sm:p-6">
+        <section className="app-panel p-4 sm:p-6">
           <TmdbDiscoverSection selectedMovieId={null} onSelectMovie={selectMovie} />
         </section>
 
         {followedPlaylists.length > 0 ? (
           <section>
-            <h2 className="font-heading text-xl font-semibold">Creators you follow</h2>
-            <div className="mt-4 flex gap-4 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <h2 className="type-section-title">Creators you follow</h2>
+            <div className="mt-3.5 flex gap-4 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {followedPlaylists.map((p) => (
                 <CommunityPlaylistCard
                   key={p.id}
@@ -1061,16 +1129,16 @@ export function ExplorePage() {
         ) : null}
 
         <section id="explore-public-playlists">
-          <h2 className="font-heading text-xl font-semibold">Public playlists</h2>
-          <ScrollArea className="mt-4 w-full">
+          <h2 className="type-section-title">Public playlists</h2>
+          <ScrollArea className="mt-3.5 w-full">
             <div className="flex w-max gap-4 pb-2">
               {communityLoading ? (
-                <div className="flex items-center gap-2 py-8 text-sm text-white/45">
+                <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground">
                   <Loader2 className="size-4 animate-spin" />
                   Loading public playlists…
                 </div>
               ) : communityPlaylists.length === 0 ? (
-                <p className="py-8 text-sm text-white/45">
+                <p className="py-8 text-sm text-muted-foreground">
                   No public playlists yet. Mark a list as Public in your Library to share it
                   here.
                 </p>
@@ -1118,7 +1186,7 @@ export function ExplorePage() {
 
       {toastMsg ? (
         <div
-          className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-full border border-white/10 bg-zinc-900 px-4 py-2 text-sm text-white shadow-lg"
+          className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-full border border-border/70 bg-popover px-4 py-2 text-sm text-popover-foreground shadow-[var(--app-shadow-card)]"
           role="status"
         >
           {toastMsg}

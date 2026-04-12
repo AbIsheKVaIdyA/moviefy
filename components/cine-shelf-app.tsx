@@ -580,7 +580,7 @@ export function MoviefyApp() {
   }
 
   return (
-    <div className="min-h-dvh pb-6 text-white">
+    <div className="min-h-dvh pb-6 text-foreground">
       <div className="mx-auto flex max-w-[1600px] gap-2 p-2">
         <aside className="hidden w-[300px] shrink-0 rounded-xl bg-card p-3 lg:block">
           <div className="flex items-center justify-between px-2 py-1">
@@ -606,7 +606,7 @@ export function MoviefyApp() {
                 "justify-start gap-2 text-sm",
                 pathname === "/app" &&
                   libraryNav === "playlists" &&
-                  "bg-white/10 text-white",
+                  "bg-muted/70 text-foreground",
               )}
               onClick={() => setLibraryNav("playlists")}
             >
@@ -618,7 +618,7 @@ export function MoviefyApp() {
               className={cn(
                 buttonVariants({ variant: "ghost" }),
                 "justify-start gap-2 text-sm",
-                pathname?.startsWith("/app/explore") && "bg-white/10 text-white",
+                pathname?.startsWith("/app/explore") && "bg-muted/70 text-foreground",
               )}
             >
               <Compass className="size-4" />
@@ -629,7 +629,7 @@ export function MoviefyApp() {
               className={cn(
                 buttonVariants({ variant: "ghost" }),
                 "w-full justify-start gap-2 text-sm",
-                libraryNav === "saved" && "bg-white/10 text-white",
+                libraryNav === "saved" && "bg-muted/70 text-foreground",
               )}
               onClick={() => {
                 setLibraryNav("saved");
@@ -718,15 +718,15 @@ export function MoviefyApp() {
         </aside>
 
         <main className="min-w-0 flex-1 rounded-xl bg-card">
-          <header className="sticky top-0 z-10 flex flex-wrap items-center gap-2 rounded-t-xl border-b border-white/5 bg-card/95 px-3 py-2.5 backdrop-blur sm:gap-3 sm:px-4 sm:py-3">
+          <header className="sticky top-0 z-10 flex flex-wrap items-center gap-2 rounded-t-xl border-b border-border/50 bg-card/95 px-3 py-2.5 backdrop-blur sm:gap-3 sm:px-4 sm:py-3">
             <button
               type="button"
               onClick={() => setSearchOpen(true)}
-              className="relative order-1 flex min-w-0 flex-1 basis-[min(100%,18rem)] items-center gap-2 rounded-lg border border-white/5 bg-[#222] py-2 pl-9 pr-3 text-left text-sm text-muted-foreground transition hover:border-white/10 hover:bg-[#2a2a2a] sm:max-w-xl"
+              className="relative order-1 flex min-w-0 flex-1 basis-[min(100%,18rem)] items-center gap-2 rounded-lg border border-border/50 bg-muted/40 py-2 pl-9 pr-3 text-left text-sm text-muted-foreground transition hover:border-border hover:bg-muted/55 sm:max-w-xl"
             >
               <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <span className="truncate">Search movies, people, genres & library…</span>
-              <span className="ml-auto hidden shrink-0 items-center gap-0.5 rounded border border-white/10 bg-black/30 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground sm:inline-flex">
+              <span className="ml-auto hidden shrink-0 items-center gap-0.5 rounded border border-border/60 bg-background/40 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground sm:inline-flex">
                 <Keyboard className="size-3" />
                 K
               </span>
@@ -737,8 +737,8 @@ export function MoviefyApp() {
                 aria-label="Your theatre"
                 className={cn(
                   buttonVariants({ variant: "secondary", size: "sm" }),
-                  "gap-1.5 border-0 bg-white/10 text-white hover:bg-white/15 lg:hidden",
-                  libraryNav === "playlists" && "ring-1 ring-white/25",
+                  "gap-1.5 border-0 bg-muted/50 text-foreground hover:bg-muted/70 lg:hidden",
+                  libraryNav === "playlists" && "ring-1 ring-border/80",
                 )}
                 onClick={() => setLibraryNav("playlists")}
               >
@@ -750,7 +750,7 @@ export function MoviefyApp() {
                 aria-label="Saved movies"
                 className={cn(
                   buttonVariants({ variant: "secondary", size: "sm" }),
-                  "gap-1.5 border-0 bg-white/10 text-white hover:bg-white/15 lg:hidden",
+                  "gap-1.5 border-0 bg-muted/50 text-foreground hover:bg-muted/70 lg:hidden",
                   libraryNav === "saved" && "ring-1 ring-primary/50",
                 )}
                 onClick={() => {
@@ -765,7 +765,7 @@ export function MoviefyApp() {
                 href="/app/explore"
                 className={cn(
                   buttonVariants({ variant: "secondary", size: "sm" }),
-                  "gap-1.5 border-0 bg-white/10 text-white hover:bg-white/15 lg:hidden",
+                  "gap-1.5 border-0 bg-muted/50 text-foreground hover:bg-muted/70 lg:hidden",
                 )}
               >
                 <Compass className="size-4" />
@@ -776,7 +776,7 @@ export function MoviefyApp() {
                 variant="ghost"
                 size="sm"
                 aria-label="Sign out"
-                className="gap-1.5 text-muted-foreground hover:bg-white/10 hover:text-white"
+                className="gap-1.5 text-muted-foreground hover:bg-muted/50 hover:text-foreground"
                 onClick={() => {
                   void client?.auth.signOut().then(() => {
                     router.push("/?auth=sign-in");
@@ -792,7 +792,7 @@ export function MoviefyApp() {
                   aria-label="Account menu"
                   className={cn(
                     buttonVariants({ variant: "ghost", size: "icon-sm" }),
-                    "rounded-full text-white hover:bg-white/10",
+                    "rounded-full text-foreground hover:bg-muted/50",
                   )}
                 >
                   <Avatar size="sm">
@@ -804,19 +804,19 @@ export function MoviefyApp() {
                 <DropdownMenuContent
                   align="end"
                   sideOffset={8}
-                  className="min-w-48 border-white/10 bg-[#1e1e1e] text-white"
+                  className="min-w-48 border-border/60 bg-popover text-popover-foreground"
                 >
-                  <DropdownMenuLabel className="text-white/70">
+                  <DropdownMenuLabel className="text-muted-foreground">
                     Account
                   </DropdownMenuLabel>
                   <DropdownMenuItem
                     disabled
-                    className="text-white/50 focus:bg-white/10 focus:text-white"
+                    className="text-muted-foreground focus:bg-muted/50 focus:text-foreground"
                   >
                     <Settings className="size-4 opacity-60" />
                     Settings
                   </DropdownMenuItem>
-                  <DropdownMenuSeparator className="bg-white/10" />
+                  <DropdownMenuSeparator className="bg-border/60" />
                   <DropdownMenuItem
                     variant="destructive"
                     className="focus:bg-red-950/50"
@@ -836,12 +836,12 @@ export function MoviefyApp() {
           </header>
 
           <ScrollArea key={libraryNav} className="h-[calc(100dvh-66px)]">
-            <div className="space-y-8 p-4 pb-10">
+            <div className="space-y-10 p-4 pb-10 sm:p-5">
               {libraryNav === "saved" ? (
-                <section className="rounded-xl bg-[#1a1a1a] p-4">
-                  <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <section className="rounded-xl border border-border/60 bg-card/90 p-5 shadow-[var(--app-shadow-card)]">
+                  <div className="mb-3.5 flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <h2 className="font-heading text-xl">Saved for later</h2>
+                      <h2 className="type-section-title">Saved for later</h2>
                       <p className="text-sm text-muted-foreground">
                         Titles you saved from movie details.
                       </p>
@@ -868,7 +868,7 @@ export function MoviefyApp() {
                           type="button"
                           onClick={() => selectMovie(movie)}
                           className={cn(
-                            "rounded-lg bg-[#242424] p-2 text-left transition hover:bg-[#2c2c2c]",
+                            "rounded-lg border border-transparent bg-muted/35 p-2 text-left transition hover:border-border/50 hover:bg-muted/50",
                             selectedMovie?.id === movie.id && "ring-1 ring-primary/50",
                           )}
                         >
@@ -893,11 +893,11 @@ export function MoviefyApp() {
                 </section>
               ) : (
               <>
-              <section className="rounded-xl bg-gradient-to-b from-[#252525] to-[#151515] p-5">
-                <p className="text-xs uppercase tracking-wide text-muted-foreground">
+              <section className="rounded-xl border border-border/60 bg-gradient-to-b from-card via-card/95 to-muted/25 p-5 shadow-[var(--app-shadow-card)] sm:p-6">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                   Welcome back
                 </p>
-                <h1 className="mt-1 font-heading text-3xl font-semibold">
+                <h1 className="type-hero mt-1">
                   {greetingFirstName(displayName, session)}
                 </h1>
                 <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground">
@@ -912,18 +912,18 @@ export function MoviefyApp() {
                   .
                 </p>
                 <div className="mt-4 flex flex-wrap items-center gap-2">
-                  <Badge variant="secondary" className="bg-white/10 text-white">
+                  <Badge variant="secondary" className="border-border/50 bg-muted/50 text-foreground">
                     {playlists.length} playlists
                   </Badge>
-                  <Badge variant="secondary" className="bg-white/10 text-white">
+                  <Badge variant="secondary" className="border-border/50 bg-muted/50 text-foreground">
                     {savedIds.size} saved
                   </Badge>
-                  <Badge variant="secondary" className="bg-white/10 text-white">
+                  <Badge variant="secondary" className="border-border/50 bg-muted/50 text-foreground">
                     {active
                       ? `${active.movies.length} in “${active.name}”`
                       : "No list open"}
                   </Badge>
-                  <Badge variant="secondary" className="bg-white/10 text-white">
+                  <Badge variant="secondary" className="border-border/50 bg-muted/50 text-foreground">
                     {active ? `${activeGenreCount} genres this list` : "—"}
                   </Badge>
                 </div>
@@ -932,7 +932,7 @@ export function MoviefyApp() {
               {recentMovies.length > 0 ? (
                 <section>
                   <div className="mb-3 flex items-center justify-between">
-                    <h2 className="font-heading text-xl">Recently viewed</h2>
+                    <h2 className="type-section-title">Recently viewed</h2>
                     <span className="text-xs text-muted-foreground">This session</span>
                   </div>
                   <div className="flex gap-3 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -967,7 +967,7 @@ export function MoviefyApp() {
 
               <section>
                 <div className="mb-3 flex items-center justify-between">
-                  <h2 className="font-heading text-xl">Your Playlists</h2>
+                  <h2 className="type-section-title">Your Playlists</h2>
                   <Button variant="ghost" size="sm" onClick={() => setNewPlaylistOpen(true)}>
                     <Plus className="size-4" />
                     Create
@@ -983,7 +983,7 @@ export function MoviefyApp() {
                         setActiveId(p.id);
                       }}
                       className={cn(
-                        "flex items-center gap-3 rounded-lg bg-[#1f1f1f] p-2 text-left transition hover:bg-[#292929] hover:shadow-lg hover:shadow-black/20",
+                        "flex items-center gap-3 rounded-lg border border-transparent bg-muted/35 p-2 text-left transition hover:border-border/50 hover:bg-muted/50 hover:shadow-[var(--app-shadow-card)]",
                         p.id === activeId && "ring-1 ring-primary/40",
                       )}
                     >
@@ -1010,7 +1010,7 @@ export function MoviefyApp() {
                 </div>
               </section>
 
-              <section className="rounded-xl bg-[#1a1a1a] p-4">
+              <section className="rounded-xl border border-border/60 bg-card/90 p-5 shadow-[var(--app-shadow-card)]">
                 {!active ? (
                   <div className="py-8 text-center">
                     <p className="text-sm text-muted-foreground">
@@ -1030,15 +1030,15 @@ export function MoviefyApp() {
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <div className="flex items-center gap-2">
-                      <h2 className="font-heading text-xl">{active.name}</h2>
-                      <Badge variant="secondary" className="bg-white/10 text-white">
+                      <h2 className="type-section-title">{active.name}</h2>
+                      <Badge variant="secondary" className="border-border/50 bg-muted/50 text-foreground">
                         {active.kind === "watched" ? "Watched log" : "Playlist"}
                       </Badge>
                     </div>
                     <p className="text-sm text-muted-foreground">{active.description}</p>
                   </div>
                   <div className="flex flex-wrap items-center gap-3">
-                    <div className="flex items-center gap-2 rounded-md bg-[#252525] px-2 py-1.5">
+                    <div className="flex items-center gap-2 rounded-md border border-border/50 bg-muted/40 px-2 py-1.5">
                       <Switch
                         id="public"
                         checked={active.isPublic}

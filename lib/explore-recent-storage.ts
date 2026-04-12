@@ -74,11 +74,53 @@ export function pushExploreRecent(movie: Movie): void {
 }
 
 export function readExploreRecentMovies(): Movie[] {
+  return readExploreRecentOpens().map((r) => r.movie);
+}
+
+export type ExploreRecentOpen = {
+  movie: Movie;
+  openedAtMs: number;
+};
+
+export function readExploreRecentOpens(): ExploreRecentOpen[] {
   if (typeof window === "undefined") return [];
   try {
     const prev = parseStored(JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "null"));
-    return prev.sort((a, b) => b.openedAt - a.openedAt).map(toMovie);
+    return prev
+      .map((s) => ({ movie: toMovie(s), openedAtMs: s.openedAt }))
+      .sort((a, b) => b.openedAtMs - a.openedAtMs);
   } catch {
     return [];
   }
+}
+
+/** Dedupe by TMDB id (or movie id), keep the latest `openedAtMs`, cap at `max`. */
+export function mergeExploreRecentMovies(
+  server: ExploreRecentOpen[],
+  local: ExploreRecentOpen[],
+  max = MAX,
+): Movie[] {
+  const best = new Map<string, ExploreRecentOpen>();
+
+  const keyOf = (m: Movie): string => {
+    const tid =
+      m.tmdbId ??
+      (m.id.startsWith("tmdb-") ? Number(m.id.slice(5)) : NaN);
+    if (Number.isFinite(tid)) return `tmdb:${tid}`;
+    return `id:${m.id}`;
+  };
+
+  const put = (r: ExploreRecentOpen) => {
+    const k = keyOf(r.movie);
+    const prev = best.get(k);
+    if (!prev || r.openedAtMs >= prev.openedAtMs) best.set(k, r);
+  };
+
+  for (const r of server) put(r);
+  for (const r of local) put(r);
+
+  return [...best.values()]
+    .sort((a, b) => b.openedAtMs - a.openedAtMs)
+    .slice(0, max)
+    .map((r) => r.movie);
 }

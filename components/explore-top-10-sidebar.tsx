@@ -39,13 +39,13 @@ export function ExploreTop10Sidebar({
   const chartValue: WindowKey = chartWindow === "day" ? "day" : "week";
 
   return (
-    <aside className="rounded-3xl border border-white/[0.12] bg-gradient-to-b from-[#161616] to-[#0d0d0d] p-4 shadow-[0_0_0_1px_rgba(255,255,255,0.04)_inset] sm:p-5">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
+    <aside className="rounded-3xl border border-border/70 bg-gradient-to-b from-card via-card/95 to-muted/25 p-4 shadow-[var(--app-shadow-card)] sm:p-5">
+      <div className="mb-3.5 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2.5">
           <div className="flex size-9 items-center justify-center rounded-xl bg-orange-500/15 text-orange-400">
             <Flame className="size-4" aria-hidden />
           </div>
-          <h2 className="font-heading text-base font-semibold tracking-tight text-white sm:text-lg">
+          <h2 className="font-heading text-base font-semibold tracking-tight text-foreground sm:text-lg">
             Most interested
           </h2>
         </div>
@@ -55,7 +55,7 @@ export function ExploreTop10Sidebar({
             if (v === "week" || v === "day") onChartWindowChange(v);
           }}
         >
-          <SelectTrigger className="h-8 w-[118px] border-white/10 bg-black/40 text-[11px] text-white/90">
+          <SelectTrigger className="h-8 w-[118px] border-border/60 bg-muted/40 text-[11px] text-foreground">
             <SelectValue>
               {chartValue === "day" ? "Today" : "This week"}
             </SelectValue>
@@ -72,16 +72,16 @@ export function ExploreTop10Sidebar({
           {Array.from({ length: 6 }).map((_, i) => (
             <div
               key={i}
-              className="h-[4.5rem] animate-pulse rounded-2xl bg-white/[0.06]"
+              className="h-[4.5rem] animate-pulse rounded-2xl bg-muted/35"
             />
           ))}
         </div>
       ) : top.length === 0 ? (
-        <p className="py-8 text-center text-xs text-white/45">
+        <p className="py-8 text-center text-xs text-muted-foreground">
           Add TMDB_API_KEY to load the chart.
         </p>
       ) : (
-        <ol className="max-h-[min(70vh,52rem)] space-y-2.5 overflow-y-auto pr-1 [-ms-overflow-style:none] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/15">
+        <ol className="max-h-[min(70vh,52rem)] space-y-2.5 overflow-y-auto pr-1 [-ms-overflow-style:none] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border/80">
           {top.map((item, idx) => {
             const rank = idx + 1;
             const movie = movieFromTmdbDiscoverItem(item);
@@ -93,18 +93,18 @@ export function ExploreTop10Sidebar({
                   type="button"
                   onClick={() => onSelectMovie(movie)}
                   className={cn(
-                    "group relative flex w-full min-w-0 gap-3 overflow-hidden rounded-2xl border border-white/10 bg-black/35 py-2.5 pl-2 pr-3 text-left transition",
-                    "hover:border-orange-500/35 hover:bg-black/50",
+                    "group relative flex w-full min-w-0 gap-3 overflow-hidden rounded-2xl border border-border/50 bg-muted/25 py-2.5 pl-2 pr-3 text-left transition",
+                    "hover:border-orange-500/40 hover:bg-muted/40",
                   )}
                 >
                   <span
-                    className="pointer-events-none absolute -left-1 bottom-0 top-0 select-none font-heading text-[3.25rem] font-bold leading-none text-white/[0.07] transition group-hover:text-orange-500/[0.12]"
+                    className="pointer-events-none absolute -left-1 bottom-0 top-0 select-none font-heading text-[3.25rem] font-bold leading-none text-foreground/[0.08] transition group-hover:text-orange-500/[0.14]"
                     aria-hidden
                   >
                     {rank}
                   </span>
                   <div className="relative z-[1] flex min-w-0 flex-1 gap-3">
-                    <div className="relative h-[4.5rem] w-[3rem] shrink-0 overflow-hidden rounded-lg bg-zinc-800 ring-1 ring-white/10">
+                    <div className="relative h-[4.5rem] w-[3rem] shrink-0 overflow-hidden rounded-lg bg-zinc-800 ring-1 ring-border/60">
                       <PosterImage
                         src={movie.posterImage}
                         alt=""
@@ -115,10 +115,10 @@ export function ExploreTop10Sidebar({
                       />
                     </div>
                     <div className="min-w-0 flex-1 py-0.5">
-                      <p className="line-clamp-2 text-sm font-semibold leading-snug text-white">
+                      <p className="line-clamp-2 text-sm font-semibold leading-snug text-foreground">
                         {movie.title}
                       </p>
-                      <p className="mt-1 line-clamp-1 text-[11px] text-white/45">
+                      <p className="mt-1 line-clamp-1 text-[11px] text-muted-foreground">
                         {sub}
                       </p>
                       <p className="mt-1 flex items-center gap-1 text-[11px] font-medium text-orange-400">

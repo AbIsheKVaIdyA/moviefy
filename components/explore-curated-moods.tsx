@@ -34,12 +34,10 @@ export function ExploreCuratedMoods({ onSelectMovie }: Props) {
   const [time, setTime] = useState<(typeof TIME)[number]["key"]>("time_easy");
 
   return (
-    <div className="space-y-10">
-      <section className="rounded-2xl border border-white/10 bg-card/40 p-4 sm:p-6">
-        <h2 className="font-heading text-lg font-semibold text-white sm:text-xl">
-          Choose a mood
-        </h2>
-        <p className="mt-1 text-xs text-white/50 sm:text-sm">
+    <div className="space-y-12">
+      <section className="app-panel p-4 sm:p-6">
+        <h2 className="type-section-title">Choose a mood</h2>
+        <p className="type-section-sub">
           One tap reshapes the row below — same catalogue, different energy.
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
@@ -51,8 +49,8 @@ export function ExploreCuratedMoods({ onSelectMovie }: Props) {
               className={cn(
                 "inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-medium transition duration-200 sm:text-sm",
                 mood === m.key
-                  ? "border-primary/50 bg-primary/20 text-white"
-                  : "border-white/10 bg-black/20 text-white/75 hover:border-white/20 hover:bg-white/5",
+                  ? "border-primary/50 bg-primary/20 text-foreground"
+                  : "border-border/60 bg-muted/30 text-muted-foreground hover:border-border hover:bg-muted/45 hover:text-foreground",
               )}
             >
               <span className="text-base" aria-hidden>
@@ -72,11 +70,11 @@ export function ExploreCuratedMoods({ onSelectMovie }: Props) {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-white/10 bg-card/40 p-4 sm:p-6">
-        <h2 className="font-heading text-lg font-semibold text-white sm:text-xl">
+      <section className="app-panel p-4 sm:p-6">
+        <h2 className="type-section-title">
           Best for: late night · date · mind-bending · action
         </h2>
-        <p className="mt-1 text-xs text-white/50 sm:text-sm">
+        <p className="type-section-sub">
           Quick situational picks — flip the chip to reload the strip.
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
@@ -88,8 +86,8 @@ export function ExploreCuratedMoods({ onSelectMovie }: Props) {
               className={cn(
                 "rounded-full border px-3 py-1.5 text-xs font-medium transition duration-200 sm:text-sm",
                 best === b.key
-                  ? "border-sky-400/50 bg-sky-500/15 text-white"
-                  : "border-white/10 bg-black/20 text-white/75 hover:border-white/20",
+                  ? "border-sky-400/50 bg-sky-500/15 text-foreground"
+                  : "border-border/60 bg-muted/30 text-muted-foreground hover:border-border hover:text-foreground",
               )}
             >
               {b.label}
@@ -106,11 +104,9 @@ export function ExploreCuratedMoods({ onSelectMovie }: Props) {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-white/10 bg-card/40 p-4 sm:p-6">
-        <h2 className="font-heading text-lg font-semibold text-white sm:text-xl">
-          Time commitment: easy watch vs heavy story
-        </h2>
-        <p className="mt-1 text-xs text-white/50 sm:text-sm">
+      <section className="app-panel p-4 sm:p-6">
+        <h2 className="type-section-title">Time commitment: easy watch vs heavy story</h2>
+        <p className="type-section-sub">
           Rough runtime + pacing hints from TMDB — not a science, but a useful nudge.
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
@@ -122,8 +118,8 @@ export function ExploreCuratedMoods({ onSelectMovie }: Props) {
               className={cn(
                 "rounded-full border px-3 py-1.5 text-xs font-medium transition duration-200 sm:text-sm",
                 time === t.key
-                  ? "border-emerald-400/50 bg-emerald-500/15 text-white"
-                  : "border-white/10 bg-black/20 text-white/75 hover:border-white/20",
+                  ? "border-emerald-400/50 bg-emerald-500/15 text-foreground"
+                  : "border-border/60 bg-muted/30 text-muted-foreground hover:border-border hover:text-foreground",
               )}
             >
               {t.label}

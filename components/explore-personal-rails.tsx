@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { ExploreMovieRail } from "@/components/explore-movie-rail";
 import { ExploreMovieStrip } from "@/components/explore-movie-strip";
-import { readExploreRecentMovies } from "@/lib/explore-recent-storage";
 import type { Genre, Movie } from "@/lib/types";
 import { GENRES } from "@/lib/types";
 
@@ -24,21 +23,19 @@ function tmdbIdFromMovie(m: Movie | undefined): number | null {
 type Props = {
   watchlistMovies: Movie[];
   watchlistLoading: boolean;
-  exploreLsTick: number;
+  recentMovies: Movie[];
+  recentLoading: boolean;
   onSelectMovie: (movie: Movie) => void;
 };
 
 export function ExplorePersonalRails({
   watchlistMovies,
   watchlistLoading,
-  exploreLsTick,
+  recentMovies,
+  recentLoading,
   onSelectMovie,
 }: Props) {
-  const [recent, setRecent] = useState<Movie[]>([]);
-
-  useEffect(() => {
-    setRecent(readExploreRecentMovies());
-  }, [exploreLsTick]);
+  const recent = recentMovies;
 
   const continueEndpoint = useMemo(() => {
     const last = recent[0];
@@ -73,8 +70,9 @@ export function ExplorePersonalRails({
 
       <ExploreMovieStrip
         title="Recently viewed"
-        subtitle="Films you opened from Explore (stored on this device)."
+        subtitle="Saved to your account when signed in, and on this device for quick access."
         movies={recent.slice(0, 16)}
+        loading={recentLoading}
         onSelectMovie={onSelectMovie}
         emptyHint="Open any poster here — we will remember it for you."
       />
