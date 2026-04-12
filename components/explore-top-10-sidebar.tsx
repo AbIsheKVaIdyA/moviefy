@@ -12,8 +12,7 @@ import {
 import type { TmdbDiscoverItem } from "@/lib/movie-enrich-types";
 import {
   exploreReleaseContextLine,
-  formatInterestCount,
-  syntheticInterestCount,
+  formatTmdbVotesShort,
 } from "@/lib/explore-display";
 import { movieFromTmdbDiscoverItem } from "@/lib/tmdb-genre-map";
 import type { Movie } from "@/lib/types";
@@ -86,7 +85,7 @@ export function ExploreTop10Sidebar({
           {top.map((item, idx) => {
             const rank = idx + 1;
             const movie = movieFromTmdbDiscoverItem(item);
-            const interest = formatInterestCount(syntheticInterestCount(item));
+            const votesLabel = formatTmdbVotesShort(item);
             const sub = exploreReleaseContextLine(item);
             return (
               <li key={item.id}>
@@ -124,7 +123,7 @@ export function ExploreTop10Sidebar({
                       </p>
                       <p className="mt-1 flex items-center gap-1 text-[11px] font-medium text-orange-400">
                         <Flame className="size-3 shrink-0" aria-hidden />
-                        {interest}
+                        <span title="From The Movie Database (TMDB)">{votesLabel}</span>
                       </p>
                     </div>
                   </div>

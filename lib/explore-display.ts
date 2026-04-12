@@ -1,17 +1,18 @@
 import type { TmdbDiscoverItem } from "@/lib/movie-enrich-types";
 
-/** Blend TMDB popularity + votes into a single “interest” number for UI (not persisted). */
-export function syntheticInterestCount(item: TmdbDiscoverItem): number {
+/**
+ * Short label for TMDB `vote_count` on a title (real API field — not a custom score).
+ * Falls back to popularity when vote count is missing/zero on some responses.
+ */
+export function formatTmdbVotesShort(item: TmdbDiscoverItem): string {
+  const v = item.vote_count ?? 0;
+  if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M votes`;
+  if (v >= 10_000) return `${Math.round(v / 1000)}K votes`;
+  if (v >= 1000) return `${(v / 1000).toFixed(1)}K votes`;
+  if (v > 0) return `${v.toLocaleString()} votes`;
   const pop = item.popularity ?? 0;
-  const base = pop * 95 + item.vote_count * 0.85 + item.vote_average * 120;
-  return Math.max(48, Math.round(base));
-}
-
-export function formatInterestCount(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M interested`;
-  if (n >= 10_000) return `${Math.round(n / 1000)}K interested`;
-  if (n >= 1000) return `${(n / 1000).toFixed(1)}K interested`;
-  return `${n} interested`;
+  if (pop >= 1) return `Pop. ${pop.toFixed(0)}`;
+  return "TMDB";
 }
 
 export function exploreReleaseContextLine(item: TmdbDiscoverItem): string {

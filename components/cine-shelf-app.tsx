@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { PosterImage } from "@/components/poster-image";
@@ -22,6 +22,7 @@ import {
   Lock,
   Plus,
   Search,
+  X,
 } from "lucide-react";
 import { useSupabaseApp } from "@/components/supabase-app-provider";
 import { movieFromTmdbDiscoverItem } from "@/lib/tmdb-genre-map";
@@ -77,7 +78,14 @@ import {
 import { cn } from "@/lib/utils";
 import { prefetchMovieEnrich } from "@/lib/movie-enrich-prefetch";
 import { movieToDetailPageHref } from "@/lib/movie-detail-nav";
+import { discoverItemFromSuggestMovie } from "@/lib/search-suggest-mappers";
+import type {
+  SearchSuggestMovieRow,
+  SearchSuggestResponse,
+} from "@/lib/search-suggest-types";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { MovieDetailDialog } from "@/components/movie-detail-dialog";
+import { SearchSuggestDropdown } from "@/components/search-suggest-dropdown";
 
 type ListSort = "rank" | "year" | "title" | "genre";
 
@@ -139,6 +147,12 @@ export function MoviefyApp() {
     useState<Movie | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQ, setSearchQ] = useState("");
+  const debouncedSearchQ = useDebouncedValue(searchQ, 300);
+  const [suggestData, setSuggestData] = useState<SearchSuggestResponse | null>(
+    null,
+  );
+  const [suggestLoading, setSuggestLoading] = useState(false);
+  const searchDialogWrapRef = useRef<HTMLDivElement>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [libraryKindFilter, setLibraryKindFilter] =
     useState<LibraryKindFilter>("all");
@@ -361,6 +375,37 @@ export function MoviefyApp() {
       lists: playlists.filter((p) => p.name.toLowerCase().includes(q)).slice(0, 8),
     };
   }, [searchQ, playlists, allKnownMovies]);
+
+  useEffect(() => {
+    if (!searchOpen) {
+      setSuggestData(null);
+      setSuggestLoading(false);
+      return;
+    }
+    const q = debouncedSearchQ.trim();
+    if (!q) {
+      setSuggestData(null);
+      setSuggestLoading(false);
+      return;
+    }
+    const ctrl = new AbortController();
+    setSuggestLoading(true);
+    setSuggestData(null);
+    void fetch(`/api/search/suggest?q=${encodeURIComponent(q)}`, {
+      signal: ctrl.signal,
+    })
+      .then((r) => r.json() as Promise<SearchSuggestResponse>)
+      .then((d) => {
+        if (!ctrl.signal.aborted) setSuggestData(d);
+      })
+      .catch(() => {
+        if (!ctrl.signal.aborted) setSuggestData(null);
+      })
+      .finally(() => {
+        if (!ctrl.signal.aborted) setSuggestLoading(false);
+      });
+    return () => ctrl.abort();
+  }, [debouncedSearchQ, searchOpen]);
 
   const inActiveList = useMemo(() => {
     if (!active || !selectedMovie) return false;
@@ -626,7 +671,7 @@ export function MoviefyApp() {
               <Input
                 value={libraryQuery}
                 onChange={(e) => setLibraryQuery(e.target.value)}
-                placeholder="Search in your playlists"
+                placeholder="Search library & open ⌘K for everything…"
                 className="border-0 bg-[#212121] pl-8"
               />
             </div>
@@ -680,7 +725,7 @@ export function MoviefyApp() {
               className="relative order-1 flex min-w-0 flex-1 basis-[min(100%,18rem)] items-center gap-2 rounded-lg border border-white/5 bg-[#222] py-2 pl-9 pr-3 text-left text-sm text-muted-foreground transition hover:border-white/10 hover:bg-[#2a2a2a] sm:max-w-xl"
             >
               <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <span className="truncate">Search your titles & playlists…</span>
+              <span className="truncate">Search movies, people, genres & library…</span>
               <span className="ml-auto hidden shrink-0 items-center gap-0.5 rounded border border-white/10 bg-black/30 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground sm:inline-flex">
                 <Keyboard className="size-3" />
                 K
@@ -1321,87 +1366,106 @@ export function MoviefyApp() {
         open={searchOpen}
         onOpenChange={(o) => {
           setSearchOpen(o);
-          if (!o) setSearchQ("");
+          if (!o) {
+            setSearchQ("");
+            setSuggestData(null);
+          }
         }}
       >
-        <DialogContent className="border-white/10 bg-[#1a1a1a] text-white sm:max-w-lg">
+        <DialogContent className="overflow-visible border-white/10 bg-[#1a1a1a] text-white sm:max-w-xl">
           <DialogHeader>
-            <DialogTitle>Search your library</DialogTitle>
+            <DialogTitle>Search everything</DialogTitle>
             <DialogDescription>
-              Films in your playlists or saved list, plus your playlist names. For TMDB
-              discovery, use Explore. Shortcut: ⌘K / Ctrl+K
+              Movies and actors from TMDB, genre shortcuts, your saved titles and
+              playlists — then Explore for full discovery. Shortcut: ⌘K / Ctrl+K
             </DialogDescription>
           </DialogHeader>
-          <Input
-            autoFocus
-            value={searchQ}
-            onChange={(e) => setSearchQ(e.target.value)}
-            placeholder="Type to filter…"
-            className="border-white/10 bg-[#252525]"
-          />
-          <ScrollArea className="max-h-72">
-            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Your titles
+          <div ref={searchDialogWrapRef} className="relative z-10 overflow-visible">
+            <Input
+              autoFocus
+              value={searchQ}
+              onChange={(e) => setSearchQ(e.target.value)}
+              placeholder="Try a title, actor, genre, or playlist…"
+              className="border-white/10 bg-[#252525] pr-10"
+              aria-autocomplete="list"
+              aria-expanded={Boolean(searchQ.trim())}
+            />
+            {searchQ.trim() ? (
+              <button
+                type="button"
+                aria-label="Clear search"
+                className="absolute right-2 top-1/2 z-[1] -translate-y-1/2 rounded-md p-1 text-muted-foreground hover:bg-white/10 hover:text-white"
+                onClick={() => {
+                  setSearchQ("");
+                  setSuggestData(null);
+                }}
+              >
+                <X className="size-4" />
+              </button>
+            ) : null}
+            <p className="mt-2 text-xs text-muted-foreground">
+              Suggestions update as you type. Top pick first, then your library, TMDB
+              matches, and genres.
             </p>
-            <ul className="space-y-1">
-              {searchResults.movies.map((m) => (
-                <li key={m.id}>
-                  <button
-                    type="button"
-                    className="flex w-full items-center gap-3 rounded-md px-2 py-2 text-left hover:bg-white/5"
-                    onClick={() => {
-                      selectMovie(m);
-                      setSearchOpen(false);
-                      setSearchQ("");
-                    }}
-                  >
-                    <div className="relative h-10 w-7 shrink-0 overflow-hidden rounded bg-zinc-800">
-                      <PosterImage
-                        src={m.posterImage}
-                        alt={m.title}
-                        fill
-                        placeholderGradient={m.posterClass}
-                        className="object-cover"
-                        sizes="28px"
-                      />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium">{m.title}</p>
-                      <p className="truncate text-xs text-muted-foreground">
-                        {m.year} · {m.genre}
-                      </p>
-                    </div>
-                  </button>
-                </li>
-              ))}
-            </ul>
-            <p className="mb-2 mt-4 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Playlists
-            </p>
-            <ul className="space-y-1 pb-2">
-              {searchResults.lists.map((p) => (
-                <li key={p.id}>
-                  <button
-                    type="button"
-                    className="w-full rounded-md px-2 py-2 text-left text-sm hover:bg-white/5"
-                    onClick={() => {
-                      setLibraryNav("playlists");
-                      setActiveId(p.id);
-                      setGenreFilter("all");
-                      setSearchOpen(false);
-                      setSearchQ("");
-                      pushToast(`Opened “${p.name}”`);
-                    }}
-                  >
-                    {p.name}
-                    <span className="ml-2 text-xs text-muted-foreground">
-                      {p.movies.length} titles
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </ScrollArea>
+            <div className="relative mt-2 min-h-[11rem] overflow-visible pb-1">
+              <SearchSuggestDropdown
+                open={Boolean(searchQ.trim())}
+                variant="library"
+                query={searchQ}
+                loading={suggestLoading}
+                data={suggestData}
+                libraryMovieHits={searchResults.movies.map((m) => ({
+                  key: m.id,
+                  title: m.title,
+                  subtitle: `${m.year} · ${m.genre} · Your library`,
+                  posterImage: m.posterImage,
+                  posterClass: m.posterClass,
+                  onPick: () => {
+                    selectMovie(m);
+                    setSearchOpen(false);
+                    setSearchQ("");
+                    setSuggestData(null);
+                  },
+                }))}
+                playlistHits={searchResults.lists.map((p) => ({
+                  id: p.id,
+                  name: p.name,
+                  hint: `${p.movies.length} titles`,
+                  onPick: () => {
+                    setLibraryNav("playlists");
+                    setActiveId(p.id);
+                    setGenreFilter("all");
+                    setSearchOpen(false);
+                    setSearchQ("");
+                    setSuggestData(null);
+                    pushToast(`Opened “${p.name}”`);
+                  },
+                }))}
+                onPickMovie={(row: SearchSuggestMovieRow) => {
+                  const item = discoverItemFromSuggestMovie(row);
+                  selectMovie(movieFromTmdbDiscoverItem(item));
+                  setSearchOpen(false);
+                  setSearchQ("");
+                  setSuggestData(null);
+                }}
+                onPickPerson={(id, name) => {
+                  setSearchOpen(false);
+                  setSearchQ("");
+                  setSuggestData(null);
+                  router.push(
+                    `/app/explore?personId=${id}&personName=${encodeURIComponent(name)}`,
+                  );
+                }}
+                onPickGenre={(g) => {
+                  setSearchOpen(false);
+                  setSearchQ("");
+                  setSuggestData(null);
+                  router.push(`/app/explore?genre=${encodeURIComponent(g)}`);
+                }}
+                onPickPlaylist={(hit) => hit.onPick()}
+              />
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 

@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
   Clapperboard,
@@ -16,13 +16,26 @@ import {
   Plus,
   Search,
   UserPlus,
+  X,
 } from "lucide-react";
 import { PosterImage } from "@/components/poster-image";
+import { ExploreCuratedMoods } from "@/components/explore-curated-moods";
+import {
+  ExploreMovieRail,
+  ExplorePosterSkeleton,
+} from "@/components/explore-movie-rail";
+import { ExplorePersonalRails } from "@/components/explore-personal-rails";
 import { ExploreStreamingRails } from "@/components/explore-streaming-rails";
 import { ExploreTop10Sidebar } from "@/components/explore-top-10-sidebar";
 import { TmdbDiscoverSection } from "@/components/tmdb-discover-section";
 import { prefetchMovieEnrich } from "@/lib/movie-enrich-prefetch";
 import { movieToDetailPageHref } from "@/lib/movie-detail-nav";
+import { discoverItemFromSuggestMovie } from "@/lib/search-suggest-mappers";
+import type {
+  SearchSuggestMovieRow,
+  SearchSuggestResponse,
+} from "@/lib/search-suggest-types";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -35,11 +48,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useSupabaseApp } from "@/components/supabase-app-provider";
+import { pushExploreRecent } from "@/lib/explore-recent-storage";
 import {
   clonePublicPlaylistForUser,
   fetchFollowedPlaylistIds,
   fetchLikedPlaylistIds,
   fetchPublicCommunityPlaylists,
+  fetchSavedMoviesForUser,
   setPlaylistFollowedDb,
   setPlaylistLikedDb,
 } from "@/lib/supabase/playlist-service";
@@ -56,7 +71,9 @@ import type {
   TmdbDiscoverResponse,
 } from "@/lib/movie-enrich-types";
 import { movieFromTmdbDiscoverItem } from "@/lib/tmdb-genre-map";
+import { tmdbGenreLabels } from "@/lib/tmdb-genre-labels";
 import { cn } from "@/lib/utils";
+import { SearchSuggestDropdown } from "@/components/search-suggest-dropdown";
 
 function talkOfTownLabel(item: TmdbDiscoverItem): string {
   const rd = item.release_date;
@@ -188,6 +205,9 @@ function CommunityPlaylistCard({
 
 export function ExplorePage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const searchWrapRef = useRef<HTMLDivElement>(null);
+  const genreFromUrlApplied = useRef<string | null>(null);
   const { client, session, ready } = useSupabaseApp();
   const [communityPlaylists, setCommunityPlaylists] = useState<
     CommunityPlaylist[]
@@ -215,6 +235,18 @@ export function ExplorePage() {
     { memeTag: string; movie: Movie }[]
   >([]);
   const [memeLoading, setMemeLoading] = useState(true);
+  const [watchlistMovies, setWatchlistMovies] = useState<Movie[]>([]);
+  const [watchlistLoading, setWatchlistLoading] = useState(false);
+  const [exploreLsTick, setExploreLsTick] = useState(0);
+  const debouncedSearch = useDebouncedValue(searchQuery, 300);
+  const [suggestData, setSuggestData] = useState<SearchSuggestResponse | null>(
+    null,
+  );
+  const [suggestLoading, setSuggestLoading] = useState(false);
+  const [castPerson, setCastPerson] = useState<{
+    id: number;
+    name: string;
+  } | null>(null);
 
   const toast = useCallback((m: string) => setToastMsg(m), []);
 
@@ -250,6 +282,26 @@ export function ExplorePage() {
   useEffect(() => {
     if (!ready || !client || !session?.user) return;
     void fetchLikedPlaylistIds(client, session.user.id).then(setLikedIds);
+  }, [ready, client, session?.user?.id]);
+
+  useEffect(() => {
+    if (!ready || !client || !session?.user) {
+      setWatchlistMovies([]);
+      setWatchlistLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setWatchlistLoading(true);
+    void fetchSavedMoviesForUser(client, session.user.id)
+      .then((rows) => {
+        if (!cancelled) setWatchlistMovies(rows);
+      })
+      .finally(() => {
+        if (!cancelled) setWatchlistLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [ready, client, session?.user?.id]);
 
   useEffect(() => {
@@ -336,8 +388,61 @@ export function ExplorePage() {
     return () => ctrl.abort();
   }, [genre, genreSort]);
 
-  const filteredPlaylists = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
+  useEffect(() => {
+    const g = searchParams.get("genre");
+    if (!g || !(GENRES as readonly string[]).includes(g)) return;
+    if (genreFromUrlApplied.current === g) return;
+    genreFromUrlApplied.current = g;
+    setGenre(g as Genre);
+    window.requestAnimationFrame(() => {
+      document.getElementById("explore-browse-genre")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+  }, [searchParams]);
+
+  useEffect(() => {
+    const pid = searchParams.get("personId");
+    const pnm = searchParams.get("personName");
+    if (pid && Number.isFinite(Number(pid))) {
+      setCastPerson({
+        id: Number(pid),
+        name: pnm ? decodeURIComponent(pnm) : "Performer",
+      });
+    } else {
+      setCastPerson(null);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    const q = debouncedSearch.trim();
+    if (!q) {
+      setSuggestData(null);
+      setSuggestLoading(false);
+      return;
+    }
+    const ctrl = new AbortController();
+    setSuggestLoading(true);
+    setSuggestData(null);
+    void fetch(`/api/search/suggest?q=${encodeURIComponent(q)}`, {
+      signal: ctrl.signal,
+    })
+      .then((r) => r.json() as Promise<SearchSuggestResponse>)
+      .then((d) => {
+        if (!ctrl.signal.aborted) setSuggestData(d);
+      })
+      .catch(() => {
+        if (!ctrl.signal.aborted) setSuggestData(null);
+      })
+      .finally(() => {
+        if (!ctrl.signal.aborted) setSuggestLoading(false);
+      });
+    return () => ctrl.abort();
+  }, [debouncedSearch]);
+
+  const playlistSearchHits = useMemo(() => {
+    const q = debouncedSearch.trim().toLowerCase();
     if (!q) return communityPlaylists;
     return communityPlaylists.filter(
       (p) =>
@@ -346,7 +451,7 @@ export function ExplorePage() {
         p.ownerHandle.toLowerCase().includes(q) ||
         p.ownerName.toLowerCase().includes(q),
     );
-  }, [searchQuery, communityPlaylists]);
+  }, [debouncedSearch, communityPlaylists]);
 
   const followedPlaylists = useMemo(
     () => communityPlaylists.filter((p) => followedIds.has(p.id)),
@@ -354,6 +459,8 @@ export function ExplorePage() {
   );
 
   function selectMovie(movie: Movie) {
+    pushExploreRecent(movie);
+    setExploreLsTick((n) => n + 1);
     const href = movieToDetailPageHref(movie, "explore");
     if (!href) {
       toast("Could not open this title — missing TMDB id.");
@@ -363,6 +470,40 @@ export function ExplorePage() {
       await prefetchMovieEnrich(movie);
       router.push(href);
     })();
+  }
+
+  function selectMovieFromSuggestRow(row: SearchSuggestMovieRow) {
+    const item = discoverItemFromSuggestMovie(row);
+    selectMovie(movieFromTmdbDiscoverItem(item));
+    setSearchQuery("");
+    setSuggestData(null);
+  }
+
+  function applyGenreFromSearch(g: Genre) {
+    setGenre(g);
+    setSearchQuery("");
+    setSuggestData(null);
+    window.requestAnimationFrame(() => {
+      document.getElementById("explore-browse-genre")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+  }
+
+  function applyPersonFromSearch(id: number, name: string) {
+    setCastPerson({ id, name });
+    setSearchQuery("");
+    setSuggestData(null);
+    router.replace(
+      `/app/explore?personId=${id}&personName=${encodeURIComponent(name)}`,
+      { scroll: false },
+    );
+  }
+
+  function clearCastPerson() {
+    setCastPerson(null);
+    router.replace("/app/explore", { scroll: false });
   }
 
   async function toggleFollow(id: string) {
@@ -424,8 +565,8 @@ export function ExplorePage() {
   }
 
   return (
-    <div className="min-h-dvh text-white">
-      <header className="sticky top-0 z-30 border-b border-white/10 bg-[oklch(0.12_0.04_250/0.55)] backdrop-blur-xl supports-[backdrop-filter]:bg-[oklch(0.12_0.04_250/0.4)]">
+    <div className="min-h-dvh text-white motion-safe:transition-opacity motion-safe:duration-200">
+      <header className="sticky top-0 z-30 border-b border-border/80 bg-[oklch(0.12_0.04_250/0.58)] backdrop-blur-xl supports-[backdrop-filter]:bg-[oklch(0.12_0.04_250/0.42)]">
         <div className="mx-auto flex max-w-[1400px] items-center justify-between gap-3 px-4 py-3">
           <div className="flex items-center gap-3">
             <Link
@@ -473,15 +614,21 @@ export function ExplorePage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-[1500px] px-4 py-8">
-        <section className="relative overflow-hidden rounded-3xl border border-sky-500/15 bg-gradient-to-br from-sky-950/50 via-emerald-950/25 to-red-950/35 p-6 sm:p-10">
-          <div className="pointer-events-none absolute -right-24 top-0 h-72 w-72 rounded-full bg-primary/15 blur-3xl" />
-          <div className="pointer-events-none absolute -left-20 bottom-0 h-56 w-56 rounded-full bg-emerald-500/10 blur-3xl" />
+      <main className="mx-auto max-w-[1500px] px-4 py-10 sm:px-6 sm:py-12">
+        <section className="relative z-[25] rounded-3xl border border-sky-500/15 bg-gradient-to-br from-sky-950/50 via-emerald-950/25 to-red-950/35 p-6 pb-8 sm:p-10 sm:pb-10">
+          {/* Clip only glows — search dropdown must not be clipped by overflow-hidden */}
+          <div
+            className="pointer-events-none absolute inset-0 overflow-hidden rounded-3xl"
+            aria-hidden
+          >
+            <div className="absolute -right-24 top-0 h-72 w-72 rounded-full bg-primary/15 blur-3xl" />
+            <div className="absolute -left-20 bottom-0 h-56 w-56 rounded-full bg-emerald-500/10 blur-3xl" />
+          </div>
           <div className="relative max-w-2xl">
-            <h1 className="font-heading text-3xl font-semibold tracking-tight sm:text-4xl">
+            <h1 className="font-heading text-3xl font-semibold tracking-tight text-white sm:text-4xl">
               Find your next obsession
             </h1>
-            <p className="mt-3 text-sm leading-relaxed text-white/60 sm:text-base">
+            <p className="mt-4 max-w-xl text-sm leading-[1.65] text-white/58 sm:text-[0.9375rem]">
               Search creators’ public lists, like and follow playlists you love, save them
               to your library — same energy as Spotify, built for film. Your own lists and
               saved titles stay on{" "}
@@ -493,20 +640,103 @@ export function ExplorePage() {
               </Link>{" "}
               (Home).
             </p>
-            <div className="relative mt-6 max-w-xl">
-              <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-white/35" />
+            <div ref={searchWrapRef} className="relative z-[60] mt-6 max-w-xl">
+              <Search className="absolute left-3 top-1/2 z-[1] size-4 -translate-y-1/2 text-white/35" />
               <Input
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search playlists, moods, or @creators…"
-                className="h-11 border-white/10 bg-black/30 pl-10 text-white placeholder:text-white/35"
+                placeholder="Movies, actors, genres, playlists…"
+                className="h-11 border-white/10 bg-black/30 pl-10 pr-10 text-white placeholder:text-white/35"
+                aria-autocomplete="list"
+                aria-expanded={Boolean(searchQuery.trim())}
+              />
+              {searchQuery.trim() ? (
+                <button
+                  type="button"
+                  aria-label="Clear search"
+                  className="absolute right-2 top-1/2 z-[1] rounded-md p-1 text-white/40 transition hover:bg-white/10 hover:text-white"
+                  onClick={() => {
+                    setSearchQuery("");
+                    setSuggestData(null);
+                  }}
+                >
+                  <X className="size-4" />
+                </button>
+              ) : null}
+              <SearchSuggestDropdown
+                open={Boolean(searchQuery.trim())}
+                variant="explore"
+                query={searchQuery}
+                loading={suggestLoading}
+                data={suggestData}
+                playlistHits={playlistSearchHits.slice(0, 10).map((p) => ({
+                  id: p.id,
+                  name: p.name,
+                  hint: `${p.movies.length} films · @${p.ownerHandle}`,
+                  onPick: () => {
+                    setSearchQuery("");
+                    setSuggestData(null);
+                    window.requestAnimationFrame(() => {
+                      document
+                        .getElementById("explore-public-playlists")
+                        ?.scrollIntoView({
+                          behavior: "smooth",
+                          block: "start",
+                        });
+                    });
+                  },
+                }))}
+                onPickMovie={selectMovieFromSuggestRow}
+                onPickPerson={applyPersonFromSearch}
+                onPickGenre={applyGenreFromSearch}
+                onPickPlaylist={(hit) => hit.onPick()}
               />
             </div>
           </div>
         </section>
 
-        <div className="mt-10 lg:grid lg:grid-cols-[minmax(0,1fr)_min(100%,320px)] lg:items-start lg:gap-8 xl:grid-cols-[minmax(0,1fr)_340px]">
-          <div className="min-w-0 space-y-10">
+        <div className="relative z-0">
+        {castPerson ? (
+          <section className="mt-10 rounded-2xl border border-violet-400/25 bg-violet-950/25 p-5 shadow-[var(--shadow-elevated)] sm:p-6">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h2 className="font-heading text-lg font-semibold text-white sm:text-xl">
+                  With {castPerson.name}
+                </h2>
+                <p className="mt-1 text-xs text-white/50">
+                  Discover titles featuring this performer (TMDB cast filter).
+                </p>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="border-white/15 text-white hover:bg-white/10"
+                onClick={() => clearCastPerson()}
+              >
+                Clear
+              </Button>
+            </div>
+            <ExploreMovieRail
+              title="Filmography picks"
+              endpoint={`/api/discover/by-cast?personId=${castPerson.id}`}
+              onSelectMovie={selectMovie}
+              limit={16}
+            />
+          </section>
+        ) : null}
+
+        <div className="mt-12 lg:grid lg:grid-cols-[minmax(0,1fr)_min(100%,320px)] lg:items-start lg:gap-10 xl:grid-cols-[minmax(0,1fr)_340px]">
+          <div className="min-w-0 space-y-12">
+        <ExplorePersonalRails
+          watchlistMovies={watchlistMovies}
+          watchlistLoading={watchlistLoading}
+          exploreLsTick={exploreLsTick}
+          onSelectMovie={selectMovie}
+        />
+
+        <ExploreCuratedMoods onSelectMovie={selectMovie} />
+
         <section>
           <div className="mb-4 flex flex-wrap items-center gap-2">
             <Megaphone className="size-5 shrink-0 text-sky-400" aria-hidden />
@@ -516,9 +746,10 @@ export function ExplorePage() {
           </div>
           <div className="overflow-hidden rounded-2xl border border-sky-500/20 bg-gradient-to-b from-sky-950/30 via-card to-background p-4 sm:p-5">
             {townLoading ? (
-              <div className="flex items-center justify-center gap-2 py-12 text-sm text-white/45">
-                <Loader2 className="size-5 animate-spin" />
-                Loading what’s hot…
+              <div className="flex gap-3 overflow-x-auto pb-2 pt-1 sm:gap-4">
+                {Array.from({ length: 12 }).map((_, i) => (
+                  <ExplorePosterSkeleton key={i} />
+                ))}
               </div>
             ) : townItems.length === 0 ? (
               <p className="py-8 text-center text-sm text-white/45">
@@ -540,14 +771,15 @@ export function ExplorePage() {
                     const movie = movieFromTmdbDiscoverItem(item);
                     const tag = talkOfTownLabel(item);
                     const rank = idx + 1;
+                    const genres = tmdbGenreLabels(item.genre_ids);
                     return (
                       <button
                         key={item.id}
                         type="button"
                         onClick={() => selectMovie(movie)}
-                        className="group w-[104px] shrink-0 snap-start text-left sm:w-[118px]"
+                        className="group w-[104px] shrink-0 snap-start text-left motion-safe:transition motion-safe:duration-200 motion-safe:ease-out motion-safe:hover:-translate-y-0.5 sm:w-[118px]"
                       >
-                        <div className="relative aspect-[2/3] overflow-hidden rounded-xl bg-zinc-900 shadow-lg shadow-black/40 ring-1 ring-white/10 transition group-hover:ring-sky-400/50 group-hover:shadow-sky-950/25">
+                        <div className="relative aspect-[2/3] overflow-hidden rounded-xl bg-zinc-900 shadow-lg shadow-black/40 ring-1 ring-white/10 transition duration-200 group-hover:ring-sky-400/50 group-hover:shadow-sky-950/25">
                           <PosterImage
                             src={movie.posterImage}
                             alt={movie.title}
@@ -556,6 +788,19 @@ export function ExplorePage() {
                             className="object-cover transition duration-300 group-hover:scale-[1.04]"
                             sizes="118px"
                           />
+                          <div
+                            className="pointer-events-none absolute inset-0 flex flex-col justify-end bg-gradient-to-t from-black/95 via-black/35 to-transparent p-2 opacity-0 transition-opacity duration-200 group-hover:opacity-100"
+                            aria-hidden
+                          >
+                            <p className="text-[10px] font-semibold text-amber-100/95">
+                              ★ {item.vote_average.toFixed(1)}
+                            </p>
+                            {genres ? (
+                              <p className="mt-0.5 line-clamp-3 text-[9px] leading-snug text-white/85">
+                                {genres}
+                              </p>
+                            ) : null}
+                          </div>
                           <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black via-black/70 to-transparent px-2 pb-2 pt-8">
                             <p className="line-clamp-2 text-[10px] font-semibold leading-tight text-white drop-shadow-md sm:text-[11px]">
                               {movie.title}
@@ -600,9 +845,13 @@ export function ExplorePage() {
           </div>
           <div className="rounded-2xl border border-white/10 bg-card p-3 sm:p-4">
             {memeLoading ? (
-              <div className="flex items-center justify-center gap-2 py-12 text-sm text-white/45">
-                <Loader2 className="size-5 animate-spin" />
-                Loading meme picks…
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="aspect-[2/3] w-full animate-pulse rounded-xl bg-white/[0.06]"
+                  />
+                ))}
               </div>
             ) : memeItems.length === 0 ? (
               <p className="py-8 text-center text-sm text-white/45">
@@ -610,46 +859,46 @@ export function ExplorePage() {
                 meme-spotlight API.
               </p>
             ) : (
-              <div className="columns-2 gap-x-4 gap-y-5 sm:columns-3 md:columns-4">
-                {memeItems.map(({ memeTag, movie }, i) => (
-                  <button
-                    key={movie.id}
-                    type="button"
-                    onClick={() => selectMovie(movie)}
-                    className={cn(
-                      "group mb-5 break-inside-avoid rounded-2xl border border-white/10 bg-black/20 p-2.5 text-left transition hover:border-amber-400/35",
-                      i % 5 === 0 && "sm:ring-1 sm:ring-amber-500/20",
-                    )}
-                  >
-                    <div className="relative aspect-[2/3] overflow-hidden rounded-xl bg-zinc-900">
-                      <PosterImage
-                        src={movie.posterImage}
-                        alt={movie.title}
-                        fill
-                        placeholderGradient={movie.posterClass}
-                        className="object-cover transition group-hover:scale-[1.02]"
-                        sizes="(max-width:640px) 42vw, 160px"
-                      />
-                      <div className="absolute left-1.5 top-1.5 right-1.5">
-                        <Badge className="border-0 bg-black/70 px-1.5 py-0 text-[8px] font-medium uppercase leading-tight tracking-wide text-amber-100 backdrop-blur line-clamp-2 sm:text-[9px]">
-                          {memeTag}
-                        </Badge>
+              <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-3.5 md:grid-cols-4 md:gap-4">
+                {memeItems.map(({ memeTag, movie }) => (
+                  <li key={movie.id} className="min-w-0">
+                    <button
+                      type="button"
+                      onClick={() => selectMovie(movie)}
+                      className="group flex h-full w-full flex-col rounded-2xl border border-white/10 bg-black/25 p-2 text-left transition hover:border-amber-400/40 hover:bg-black/35 sm:p-2.5"
+                    >
+                      <div className="relative aspect-[2/3] w-full overflow-hidden rounded-xl bg-zinc-900 ring-1 ring-white/5">
+                        <PosterImage
+                          src={movie.posterImage}
+                          alt={movie.title}
+                          fill
+                          placeholderGradient={movie.posterClass}
+                          className="object-cover transition duration-300 group-hover:scale-[1.02]"
+                          sizes="(max-width:640px) 44vw, 160px"
+                        />
+                        <div className="absolute left-1.5 top-1.5 right-1.5">
+                          <Badge className="border-0 bg-black/75 px-1.5 py-0 text-[8px] font-medium uppercase leading-tight tracking-wide text-amber-100/95 backdrop-blur line-clamp-2 sm:text-[9px]">
+                            {memeTag}
+                          </Badge>
+                        </div>
                       </div>
-                    </div>
-                    <p className="mt-2 line-clamp-2 text-xs font-medium leading-snug text-white/90">
-                      {movie.title}
-                    </p>
-                    <p className="text-[10px] text-white/40">
-                      {movie.year} · Open film page
-                    </p>
-                  </button>
+                      <div className="mt-2 flex min-h-[2.75rem] flex-1 flex-col justify-between gap-1">
+                        <p className="line-clamp-2 text-[11px] font-semibold leading-snug text-white/95 sm:text-xs">
+                          {movie.title}
+                        </p>
+                        <p className="text-[10px] text-white/42">
+                          {movie.year || "—"}
+                        </p>
+                      </div>
+                    </button>
+                  </li>
                 ))}
-              </div>
+              </ul>
             )}
           </div>
         </section>
 
-        <section>
+        <section id="explore-browse-genre">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <h2 className="font-heading text-xl font-semibold">Browse by genre</h2>
@@ -710,9 +959,14 @@ export function ExplorePage() {
 
           <div className="mt-6 min-h-[120px] rounded-2xl border border-white/10 bg-card/80 p-4 sm:p-6">
             {genreLoading ? (
-              <div className="flex items-center justify-center gap-2 py-16 text-white/50">
-                <Loader2 className="size-5 animate-spin" />
-                Loading {genre} picks…
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                {Array.from({ length: 10 }).map((_, i) => (
+                  <div key={i} className="space-y-2">
+                    <div className="aspect-[2/3] w-full animate-pulse rounded-xl bg-white/[0.06]" />
+                    <div className="h-3 w-[75%] animate-pulse rounded bg-white/[0.06]" />
+                    <div className="h-2 w-[45%] animate-pulse rounded bg-white/[0.05]" />
+                  </div>
+                ))}
               </div>
             ) : !genreConfigured ? (
               <p className="text-center text-sm text-amber-200/80">
@@ -726,22 +980,36 @@ export function ExplorePage() {
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
                 {genreResults.slice(0, 15).map((item) => {
                   const movie = movieFromTmdbDiscoverItem(item);
+                  const genres = tmdbGenreLabels(item.genre_ids);
                   return (
                     <button
                       key={item.id}
                       type="button"
                       onClick={() => selectMovie(movie)}
-                      className="group text-left"
+                      className="group text-left motion-safe:transition motion-safe:duration-200 motion-safe:hover:-translate-y-0.5"
                     >
-                      <div className="relative aspect-[2/3] overflow-hidden rounded-xl bg-zinc-900 ring-1 ring-white/10 transition group-hover:ring-primary/40">
+                      <div className="relative aspect-[2/3] overflow-hidden rounded-xl bg-zinc-900 ring-1 ring-white/10 transition duration-200 group-hover:ring-primary/40">
                         <PosterImage
                           src={movie.posterImage}
                           alt={movie.title}
                           fill
                           placeholderGradient={movie.posterClass}
-                          className="object-cover transition group-hover:scale-[1.02]"
+                          className="object-cover transition duration-300 group-hover:scale-[1.03]"
                           sizes="(max-width: 640px) 45vw, 180px"
                         />
+                        <div
+                          className="pointer-events-none absolute inset-0 flex flex-col justify-end bg-gradient-to-t from-black/95 via-black/30 to-transparent p-2 opacity-0 transition-opacity duration-200 group-hover:opacity-100"
+                          aria-hidden
+                        >
+                          <p className="text-[10px] font-semibold text-amber-100/95">
+                            ★ {item.vote_average.toFixed(1)}
+                          </p>
+                          {genres ? (
+                            <p className="mt-0.5 line-clamp-3 text-[9px] leading-snug text-white/85">
+                              {genres}
+                            </p>
+                          ) : null}
+                        </div>
                       </div>
                       <p className="mt-2 line-clamp-2 text-xs font-medium text-white/90">
                         {movie.title}
@@ -792,7 +1060,7 @@ export function ExplorePage() {
           </section>
         ) : null}
 
-        <section>
+        <section id="explore-public-playlists">
           <h2 className="font-heading text-xl font-semibold">Public playlists</h2>
           <ScrollArea className="mt-4 w-full">
             <div className="flex w-max gap-4 pb-2">
@@ -801,14 +1069,13 @@ export function ExplorePage() {
                   <Loader2 className="size-4 animate-spin" />
                   Loading public playlists…
                 </div>
-              ) : filteredPlaylists.length === 0 ? (
+              ) : communityPlaylists.length === 0 ? (
                 <p className="py-8 text-sm text-white/45">
-                  {communityPlaylists.length === 0
-                    ? "No public playlists yet. Mark a list as Public in your Library to share it here."
-                    : "No playlists match your search."}
+                  No public playlists yet. Mark a list as Public in your Library to share it
+                  here.
                 </p>
               ) : (
-                filteredPlaylists.map((p) => (
+                communityPlaylists.map((p) => (
                   <CommunityPlaylistCard
                     key={p.id}
                     item={p}
@@ -836,7 +1103,7 @@ export function ExplorePage() {
           </ScrollArea>
         </section>
           </div>
-          <div className="mt-10 w-full shrink-0 lg:mt-0 lg:sticky lg:top-[5.25rem] lg:self-start">
+          <div className="mt-12 w-full shrink-0 lg:mt-0 lg:sticky lg:top-[5.25rem] lg:self-start">
             <ExploreTop10Sidebar
               loading={topChartLoading}
               items={topChartItems}
@@ -845,6 +1112,7 @@ export function ExplorePage() {
               onSelectMovie={selectMovie}
             />
           </div>
+        </div>
         </div>
       </main>
 
