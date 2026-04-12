@@ -77,16 +77,18 @@ type YtSearchItem = {
   };
 };
 
-async function searchYoutubeClip(
-  query: string,
-  videoDuration?: "short" | "medium" | "long",
-): Promise<{
+type YtClip = {
   videoId: string;
   title: string;
   channelTitle: string;
   thumbnail: string | null;
-} | null> {
-  if (!YT_KEY) return null;
+};
+
+async function searchYoutubeClip(
+  query: string,
+  videoDuration?: "short" | "medium" | "long",
+): Promise<{ clip: YtClip | null; error?: string }> {
+  if (!YT_KEY) return { clip: null, error: "No YouTube API key" };
   const u = new URL("https://www.googleapis.com/youtube/v3/search");
   u.searchParams.set("part", "snippet");
   u.searchParams.set("type", "video");
@@ -99,47 +101,56 @@ async function searchYoutubeClip(
     error?: { message?: string };
     items?: YtSearchItem[];
   };
-  if (!res.ok || data.error || !data.items?.length) return null;
+  if (data.error?.message) {
+    return { clip: null, error: data.error.message };
+  }
+  if (!res.ok) {
+    return { clip: null, error: `YouTube HTTP ${res.status}` };
+  }
+  if (!data.items?.length) {
+    return { clip: null, error: "No videos for this query" };
+  }
   for (const item of data.items) {
     const vid = item.id.videoId;
     if (!vid) continue;
     return {
-      videoId: vid,
-      title: item.snippet.title,
-      channelTitle: item.snippet.channelTitle,
-      thumbnail:
-        item.snippet.thumbnails?.medium?.url ??
-        item.snippet.thumbnails?.default?.url ??
-        null,
+      clip: {
+        videoId: vid,
+        title: item.snippet.title,
+        channelTitle: item.snippet.channelTitle,
+        thumbnail:
+          item.snippet.thumbnails?.medium?.url ??
+          item.snippet.thumbnails?.default?.url ??
+          null,
+      },
     };
   }
-  return null;
+  return { clip: null, error: "No videoId in results" };
 }
 
 async function searchYoutubeClipForMeme(
   title: string,
   year: string,
   memeTag: string,
-): Promise<{
-  videoId: string;
-  title: string;
-  channelTitle: string;
-  thumbnail: string | null;
-} | null> {
+): Promise<{ clip: YtClip | null; lastError?: string }> {
   const y = year.trim();
   const titled = `${title}${y ? ` ${y}` : ""}`.replace(/\s+/g, " ").trim();
-  /** Cap at 3 search.list calls per seed to limit quota (cache is 12h). */
-  const tries: [string, "short" | "medium" | undefined][] = [
+  /** Up to 5 search.list calls per seed; stops at first hit (cache is 12h). */
+  const tries: [string, "short" | "medium" | "long" | undefined][] = [
     [`${titled} ${memeTag}`, "short"],
-    [`${title} ${memeTag} movie scene`, "medium"],
-    [`${memeTag} ${title} film`, undefined],
+    [`${title} ${memeTag} movie`, "medium"],
+    [`${title} ${memeTag} scene`, undefined],
+    [`${memeTag} ${title}`, "short"],
+    [`${title} ${memeTag}`, undefined],
   ];
+  let lastError: string | undefined;
   for (const [q, d] of tries) {
     if (!q.trim()) continue;
-    const hit = await searchYoutubeClip(q, d);
-    if (hit) return hit;
+    const { clip, error } = await searchYoutubeClip(q, d);
+    if (clip) return { clip };
+    if (error) lastError = error;
   }
-  return null;
+  return { clip: null, lastError };
 }
 
 async function buildMemeReels(): Promise<MemeReelsApiResponse> {
@@ -165,6 +176,8 @@ async function buildMemeReels(): Promise<MemeReelsApiResponse> {
     };
   }
 
+  let lastYoutubeError: string | undefined;
+
   const rows = await Promise.all(
     MEME_REEL_SEEDS.map(async ({ tmdbId, memeTag }) => {
       try {
@@ -180,7 +193,12 @@ async function buildMemeReels(): Promise<MemeReelsApiResponse> {
           movie.year != null && Number.isFinite(movie.year)
             ? String(movie.year)
             : "";
-        const clip = await searchYoutubeClipForMeme(movie.title, year, memeTag);
+        const { clip, lastError } = await searchYoutubeClipForMeme(
+          movie.title,
+          year,
+          memeTag,
+        );
+        if (lastError) lastYoutubeError = lastError;
         if (!clip) return null;
         return {
           videoId: clip.videoId,
@@ -198,19 +216,26 @@ async function buildMemeReels(): Promise<MemeReelsApiResponse> {
 
   const items = rows.filter((r): r is MemeReelApiItem => r != null);
   let warning: string | undefined;
+  let emptyHint: string | undefined;
   if (items.length === 0) {
-    warning =
-      "No clips matched the seeds — confirm TMDB + YouTube keys, then tune lib/meme-reels-seed.ts.";
+    if (lastYoutubeError) {
+      emptyHint = lastYoutubeError;
+      warning =
+        "TMDB and YouTube keys are set, but no reels loaded. Usually: YouTube Data API quota, Search not enabled for the key, or searches returned no videos. Details below.";
+    } else {
+      warning =
+        "No reels loaded: TMDB titles resolved but every YouTube search returned no clips. Try simpler memeTag lines in lib/meme-reels-seed.ts.";
+    }
   } else if (items.length < MEME_REEL_SEEDS.length) {
     warning = `Loaded ${items.length} of ${MEME_REEL_SEEDS.length} reels — you can add more specific memeTag lines for the misses.`;
   }
 
-  return { configured, items, warning };
+  return { configured, items, warning, emptyHint };
 }
 
 const getCachedMemeReels = unstable_cache(
   async () => buildMemeReels(),
-  ["explore-meme-reels-v3"],
+  ["explore-meme-reels-v5"],
   { revalidate: 43200 },
 );
 

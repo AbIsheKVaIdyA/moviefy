@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import type { ReviewEngagement } from "@/lib/supabase/movie-review-social-service";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -75,6 +76,9 @@ export type MovieDetailReviewsSectionProps = {
   discussionRowsShown: MovieTakeReviewRow[];
   showAllDiscussion: boolean;
   onShowAllDiscussion: (v: boolean) => void;
+  reviewEngagement: ReviewEngagement | null;
+  onToggleReviewLike: (reviewAuthorId: string) => Promise<boolean>;
+  onPostReviewReply: (reviewAuthorId: string, body: string) => Promise<boolean>;
   takeTierDraft: MovieTakeTier | null;
   onTakeTierDraft: (t: MovieTakeTier) => void;
   takeReviewDraft: string;
@@ -101,6 +105,9 @@ export function MovieDetailReviewsSection({
   discussionRowsShown,
   showAllDiscussion,
   onShowAllDiscussion,
+  reviewEngagement,
+  onToggleReviewLike,
+  onPostReviewReply,
   takeTierDraft,
   onTakeTierDraft,
   takeReviewDraft,
@@ -112,6 +119,17 @@ export function MovieDetailReviewsSection({
   onSaveReviewPost,
 }: MovieDetailReviewsSectionProps) {
   const [showSpoilers, setShowSpoilers] = useState(true);
+  const [likingAuthorId, setLikingAuthorId] = useState<string | null>(null);
+  const [replyOpenFor, setReplyOpenFor] = useState<string | null>(null);
+  const [replyDraft, setReplyDraft] = useState("");
+  const [replying, setReplying] = useState(false);
+  const [socialNotice, setSocialNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!socialNotice) return;
+    const t = window.setTimeout(() => setSocialNotice(null), 4000);
+    return () => window.clearTimeout(t);
+  }, [socialNotice]);
   const composerHandle = useMemo(() => {
     const raw = viewerDisplayName?.trim();
     if (raw) return `@${raw.replace(/^@+/, "")}`;
@@ -156,7 +174,8 @@ export function MovieDetailReviewsSection({
               Reviews
             </h3>
             <p className="mt-0.5 max-w-xl text-sm text-white/50">
-              Community vibe meter, then written takes — sort, read, and post yours.
+              Community vibe meter, then written takes — like and reply to others, sort, and
+              post yours.
             </p>
           </div>
         </div>
@@ -199,6 +218,12 @@ export function MovieDetailReviewsSection({
 
           {takesError ? (
             <p className="mt-4 text-sm text-amber-200/90">{takesError}</p>
+          ) : null}
+
+          {socialNotice ? (
+            <p className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100/90">
+              {socialNotice}
+            </p>
           ) : null}
 
           <div className="mt-8 flex flex-col gap-4 border-t border-white/10 pt-6 lg:flex-row lg:items-center lg:justify-between">
@@ -255,9 +280,22 @@ export function MovieDetailReviewsSection({
                       .join("")
                       .slice(0, 2)
                       .toUpperCase();
+                    const likeCount =
+                      reviewEngagement?.likeCountByAuthor[row.userId] ?? 0;
+                    const likedByMe = Boolean(
+                      reviewEngagement?.myLikedAuthorIds.includes(row.userId),
+                    );
+                    const threadReplies =
+                      reviewEngagement?.repliesByAuthor[row.userId] ?? [];
+                    const isOwnReview = userId != null && row.userId === userId;
+                    const likeDisabled =
+                      !userId ||
+                      isOwnReview ||
+                      likingAuthorId === row.userId ||
+                      !supabase;
                     return (
                       <li
-                        key={`${row.userId}-${row.createdAt}`}
+                        key={row.userId}
                         className="rounded-2xl border border-white/10 bg-[#141414] px-4 py-4 sm:px-5 sm:py-5"
                       >
                         <div className="flex gap-4">
@@ -288,16 +326,172 @@ export function MovieDetailReviewsSection({
                             >
                               {row.review}
                             </p>
-                            <div className="mt-4 flex items-center gap-5 text-white/35">
-                              <span className="inline-flex items-center gap-1.5 text-xs">
-                                <Heart className="size-4" />
-                                —
-                              </span>
-                              <span className="inline-flex items-center gap-1.5 text-xs">
-                                <MessageCircle className="size-4" />
-                                —
-                              </span>
+                            <div className="mt-4 flex flex-wrap items-center gap-3">
+                              <button
+                                type="button"
+                                disabled={likeDisabled}
+                                title={
+                                  isOwnReview
+                                    ? "You can’t like your own review"
+                                    : !userId
+                                      ? "Sign in to like reviews"
+                                      : likedByMe
+                                        ? "Unlike"
+                                        : "Like this review"
+                                }
+                                onClick={() => {
+                                  if (likeDisabled) return;
+                                  setSocialNotice(null);
+                                  setLikingAuthorId(row.userId);
+                                  void (async () => {
+                                    try {
+                                      const ok = await onToggleReviewLike(row.userId);
+                                      if (!ok) {
+                                        setSocialNotice(
+                                          "Could not update like — run supabase/migrate-movie-review-likes-replies.sql?",
+                                        );
+                                      }
+                                    } catch {
+                                      setSocialNotice("Could not update like.");
+                                    } finally {
+                                      setLikingAuthorId(null);
+                                    }
+                                  })();
+                                }}
+                                className={cn(
+                                  "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition",
+                                  likedByMe
+                                    ? "border-rose-400/50 bg-rose-500/15 text-rose-100"
+                                    : "border-white/15 bg-black/30 text-white/70 hover:border-white/30 hover:text-white",
+                                  likeDisabled && "cursor-not-allowed opacity-40",
+                                )}
+                              >
+                                <Heart
+                                  className={cn(
+                                    "size-4 shrink-0",
+                                    likedByMe && "fill-current text-rose-300",
+                                  )}
+                                />
+                                {likeCount}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={!userId}
+                                title={
+                                  !userId
+                                    ? "Sign in to reply"
+                                    : replyOpenFor === row.userId
+                                      ? "Close reply"
+                                      : "Reply"
+                                }
+                                onClick={() => {
+                                  if (!userId) return;
+                                  if (replyOpenFor === row.userId) {
+                                    setReplyOpenFor(null);
+                                    setReplyDraft("");
+                                  } else {
+                                    setReplyOpenFor(row.userId);
+                                    setReplyDraft("");
+                                  }
+                                }}
+                                className={cn(
+                                  "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition",
+                                  replyOpenFor === row.userId
+                                    ? "border-sky-400/50 bg-sky-500/15 text-sky-100"
+                                    : "border-white/15 bg-black/30 text-white/70 hover:border-white/30 hover:text-white",
+                                  !userId && "cursor-not-allowed opacity-40",
+                                )}
+                              >
+                                <MessageCircle className="size-4 shrink-0" />
+                                Reply
+                                {threadReplies.length > 0 ? (
+                                  <span className="tabular-nums text-white/50">
+                                    ({threadReplies.length})
+                                  </span>
+                                ) : null}
+                              </button>
                             </div>
+
+                            {replyOpenFor === row.userId && userId ? (
+                              <div className="mt-4 space-y-2 rounded-xl border border-white/10 bg-black/35 p-3">
+                                <textarea
+                                  value={replyDraft}
+                                  onChange={(e) =>
+                                    setReplyDraft(e.target.value.slice(0, 1000))
+                                  }
+                                  rows={3}
+                                  placeholder="Write a reply…"
+                                  className="w-full resize-y rounded-lg border border-white/10 bg-black/50 px-3 py-2 text-sm text-white placeholder:text-white/35 focus-visible:border-primary/50 focus-visible:outline-none"
+                                />
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-[10px] text-white/35">
+                                    {replyDraft.length}/1000
+                                  </span>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    disabled={
+                                      replying || replyDraft.trim().length === 0
+                                    }
+                                    onClick={() => {
+                                      setSocialNotice(null);
+                                      setReplying(true);
+                                      void (async () => {
+                                        try {
+                                          const ok = await onPostReviewReply(
+                                            row.userId,
+                                            replyDraft,
+                                          );
+                                          if (ok) {
+                                            setReplyDraft("");
+                                            setReplyOpenFor(null);
+                                          } else {
+                                            setSocialNotice(
+                                              "Could not post reply — run supabase/migrate-movie-review-likes-replies.sql?",
+                                            );
+                                          }
+                                        } catch {
+                                          setSocialNotice("Could not post reply.");
+                                        } finally {
+                                          setReplying(false);
+                                        }
+                                      })();
+                                    }}
+                                  >
+                                    {replying ? (
+                                      <Loader2 className="size-4 animate-spin" />
+                                    ) : (
+                                      "Post reply"
+                                    )}
+                                  </Button>
+                                </div>
+                              </div>
+                            ) : null}
+
+                            {threadReplies.length > 0 ? (
+                              <ul className="mt-4 space-y-3 border-l-2 border-white/10 pl-4">
+                                {threadReplies.map((rep) => {
+                                  const rw =
+                                    rep.handle?.trim() ||
+                                    rep.displayName?.trim() ||
+                                    "Member";
+                                  return (
+                                    <li key={rep.id} className="text-sm">
+                                      <p className="text-[11px] text-white/45">
+                                        <span className="font-medium text-white/70">
+                                          {rw}
+                                        </span>
+                                        <span className="mx-1.5 text-white/25">·</span>
+                                        {formatDiscussionTime(rep.createdAt)}
+                                      </p>
+                                      <p className="mt-1 whitespace-pre-wrap leading-relaxed text-white/82">
+                                        {rep.body}
+                                      </p>
+                                    </li>
+                                  );
+                                })}
+                              </ul>
+                            ) : null}
                           </div>
                         </div>
                       </li>

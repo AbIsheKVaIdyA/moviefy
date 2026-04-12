@@ -56,6 +56,12 @@ import {
   upsertMovieUserTakeReviewOnly,
   upsertMovieUserTakeTierOnly,
 } from "@/lib/supabase/movie-takes-service";
+import {
+  fetchReviewEngagement,
+  insertReviewReply as insertReviewReplyDb,
+  toggleReviewLike as toggleReviewLikeDb,
+  type ReviewEngagement,
+} from "@/lib/supabase/movie-review-social-service";
 import { vibeSlicesFromTmdbGenres } from "@/lib/movie-vibe-chart";
 
 export type MovieDetailViewProps = {
@@ -175,6 +181,9 @@ export function MovieDetailView({
   const [reviewPostSaving, setReviewPostSaving] = useState(false);
   const [takesError, setTakesError] = useState<string | null>(null);
   const [reviewFeed, setReviewFeed] = useState<MovieTakeReviewRow[]>([]);
+  const [reviewEngagement, setReviewEngagement] = useState<ReviewEngagement | null>(
+    null,
+  );
   const [reviewSort, setReviewSort] = useState<"recent" | "longest">("recent");
   const [showAllDiscussion, setShowAllDiscussion] = useState(false);
 
@@ -197,6 +206,7 @@ export function MovieDetailView({
       setTakeReviewDraft("");
       setTakesError(null);
       setReviewFeed([]);
+      setReviewEngagement(null);
       setReviewSort("recent");
     }
   }, [active]);
@@ -307,16 +317,20 @@ export function MovieDetailView({
   useEffect(() => {
     if (!active || !movie || !supabase || !movieHasTmdb) {
       setReviewFeed([]);
+      setReviewEngagement(null);
       return;
     }
     let cancelled = false;
     void fetchMovieTakeReviews(supabase, movie).then((rows) => {
       if (!cancelled) setReviewFeed(rows);
     });
+    void fetchReviewEngagement(supabase, movie, userId).then((eng) => {
+      if (!cancelled) setReviewEngagement(eng);
+    });
     return () => {
       cancelled = true;
     };
-  }, [active, supabase, movie?.id, movieHasTmdb]);
+  }, [active, supabase, movie?.id, movieHasTmdb, userId]);
 
   const sortedDiscussion = useMemo(() => {
     const list = [...reviewFeed];
@@ -373,7 +387,47 @@ export function MovieDetailView({
       setBaselineTake(null);
     }
     setReviewFeed(reviews);
+    setReviewEngagement(await fetchReviewEngagement(supabase, movie, userId));
   }, [supabase, userId, movie]);
+
+  const handleToggleReviewLike = useCallback(
+    async (reviewAuthorId: string): Promise<boolean> => {
+      if (!supabase || !userId || !movie) return false;
+      const ok = await toggleReviewLikeDb(
+        supabase,
+        movie,
+        reviewAuthorId,
+        userId,
+      );
+      if (ok) {
+        setReviewEngagement(
+          await fetchReviewEngagement(supabase, movie, userId),
+        );
+      }
+      return ok;
+    },
+    [supabase, userId, movie],
+  );
+
+  const handlePostReviewReply = useCallback(
+    async (reviewAuthorId: string, body: string): Promise<boolean> => {
+      if (!supabase || !userId || !movie) return false;
+      const ok = await insertReviewReplyDb(
+        supabase,
+        movie,
+        reviewAuthorId,
+        userId,
+        body,
+      );
+      if (ok) {
+        setReviewEngagement(
+          await fetchReviewEngagement(supabase, movie, userId),
+        );
+      }
+      return ok;
+    },
+    [supabase, userId, movie],
+  );
 
   const saveTierPost = useCallback(async () => {
     if (!supabase || !userId || !movie) return;
@@ -1071,6 +1125,9 @@ export function MovieDetailView({
                           discussionRowsShown={discussionRowsShown}
                           showAllDiscussion={showAllDiscussion}
                           onShowAllDiscussion={setShowAllDiscussion}
+                          reviewEngagement={reviewEngagement}
+                          onToggleReviewLike={handleToggleReviewLike}
+                          onPostReviewReply={handlePostReviewReply}
                           takeTierDraft={takeTierDraft}
                           onTakeTierDraft={setTakeTierDraft}
                           takeReviewDraft={takeReviewDraft}

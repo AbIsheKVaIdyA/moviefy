@@ -91,7 +91,14 @@ export function MemeReelsSection({
             ) : !data.configured.youtube ? (
               <p>Add YOUTUBE_API_KEY (or YOUTUBE_DATA_API_KEY / GOOGLE_API_KEY) on the server.</p>
             ) : data.warning ? (
-              <p className="text-xs text-amber-200/90">{data.warning}</p>
+              <div className="space-y-2 text-xs text-amber-200/90">
+                <p>{data.warning}</p>
+                {data.emptyHint ? (
+                  <p className="rounded-md bg-muted/40 px-2 py-1.5 font-mono text-[11px] text-foreground/90">
+                    {data.emptyHint}
+                  </p>
+                ) : null}
+              </div>
             ) : (
               <p>No reels returned — check seeds in lib/meme-reels-seed.ts.</p>
             )}
