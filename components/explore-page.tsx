@@ -86,6 +86,7 @@ import { cn } from "@/lib/utils";
 import { SearchSuggestDropdown } from "@/components/search-suggest-dropdown";
 import { ExploreJumpNav, type ExploreJumpLink } from "@/components/explore-jump-nav";
 import { ExploreSpotlightRails } from "@/components/explore-spotlight-rails";
+import { PickForMePanel } from "@/components/pick-for-me-panel";
 import { clearExploreRecentLocal } from "@/lib/explore-recent-storage";
 import { clearAllExploreRecentOpens } from "@/lib/supabase/explore-recent-service";
 
@@ -547,6 +548,7 @@ export function ExplorePage() {
       { id: "explore-section-watchlist", label: "Watchlist" },
       { id: "explore-section-recent", label: "Recent" },
       { id: "explore-section-moods", label: "Moods" },
+      { id: "explore-section-pick-for-me", label: "Pick for me" },
       { id: "explore-section-spotlights", label: "Awards · ≤90m" },
       { id: "explore-section-buzzing", label: "Buzzing" },
       { id: "explore-stream-netflix", label: "Netflix" },
@@ -822,6 +824,10 @@ export function ExplorePage() {
 
         <div className="relative z-0">
         <ExploreJumpNav links={exploreJumpLinks} />
+
+        <div className="mt-10">
+          <PickForMePanel onPickMovie={selectMovie} />
+        </div>
 
         {castPerson ? (
           <section
