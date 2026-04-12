@@ -13,7 +13,8 @@ function tmdbIdFromMovie(movie: Movie): number | null {
 /** Path under `/app` for the full-screen movie detail (TMDB-backed). Empty string if not linkable. */
 export function movieToDetailPageHref(
   movie: Movie,
-  from?: "explore",
+  from?: "explore" | "releases",
+  media?: "movie" | "tv",
 ): string {
   const tid = tmdbIdFromMovie(movie);
   if (tid == null) return "";
@@ -25,6 +26,7 @@ export function movieToDetailPageHref(
   const pp = posterPathFromTmdbPosterUrl(movie.posterImage);
   if (pp) q.set("pp", pp);
   if (from) q.set("from", from);
+  if (media === "tv") q.set("media", "tv");
   return `/app/movie/${tid}?${q.toString()}`;
 }
 

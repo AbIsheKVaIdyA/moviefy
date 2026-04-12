@@ -56,6 +56,7 @@ export async function GET(request: NextRequest) {
   const title = searchParams.get("title")?.trim() || "";
   const year = searchParams.get("year")?.trim() || "";
   let tmdbId = searchParams.get("tmdbId")?.trim() || null;
+  const tmdbMedia = searchParams.get("media") === "tv" ? "tv" : "movie";
 
   const warnings: string[] = [];
 
@@ -112,28 +113,33 @@ export async function GET(request: NextRequest) {
 
   if (tmdbId && TMDB_KEY) {
     try {
+      const pathBase =
+        tmdbMedia === "tv" ? `tv/${tmdbId}` : `movie/${tmdbId}`;
       const [detailRes, provRes, videosRes, creditsRes] = await Promise.all([
         fetch(
-          `https://api.themoviedb.org/3/movie/${tmdbId}?api_key=${TMDB_KEY}`,
+          `https://api.themoviedb.org/3/${pathBase}?api_key=${TMDB_KEY}`,
         ),
         fetch(
-          `https://api.themoviedb.org/3/movie/${tmdbId}/watch/providers?api_key=${TMDB_KEY}`,
+          `https://api.themoviedb.org/3/${pathBase}/watch/providers?api_key=${TMDB_KEY}`,
         ),
         fetch(
-          `https://api.themoviedb.org/3/movie/${tmdbId}/videos?api_key=${TMDB_KEY}`,
+          `https://api.themoviedb.org/3/${pathBase}/videos?api_key=${TMDB_KEY}`,
         ),
         fetch(
-          `https://api.themoviedb.org/3/movie/${tmdbId}/credits?api_key=${TMDB_KEY}`,
+          `https://api.themoviedb.org/3/${pathBase}/credits?api_key=${TMDB_KEY}`,
         ),
       ]);
       const detail = (await detailRes.json()) as {
         title?: string;
+        name?: string;
         release_date?: string;
+        first_air_date?: string;
         overview?: string;
         vote_average?: number;
         vote_count?: number;
         genres?: { id?: number; name?: string }[];
         runtime?: number;
+        episode_run_time?: number[];
         backdrop_path?: string | null;
       };
       const prov = (await provRes.json()) as {
@@ -182,8 +188,10 @@ export async function GET(request: NextRequest) {
       }
 
       if (detail.title) resolvedTitle = detail.title;
-      if (detail.release_date)
-        resolvedYear = detail.release_date.slice(0, 4) || resolvedYear;
+      else if (detail.name) resolvedTitle = detail.name;
+      const primaryDate = detail.release_date ?? detail.first_air_date;
+      if (primaryDate)
+        resolvedYear = primaryDate.slice(0, 4) || resolvedYear;
       overview = detail.overview ?? null;
       if (typeof detail.vote_average === "number") tmdbVoteAverage = detail.vote_average;
       if (typeof detail.vote_count === "number") tmdbVoteCount = detail.vote_count;
@@ -200,6 +208,19 @@ export async function GET(request: NextRequest) {
       }
       if (typeof detail.runtime === "number" && detail.runtime > 0) {
         runtimeMinutes = detail.runtime;
+      } else if (
+        tmdbMedia === "tv" &&
+        Array.isArray(detail.episode_run_time) &&
+        detail.episode_run_time.length
+      ) {
+        const nums = detail.episode_run_time.filter(
+          (n) => typeof n === "number" && n > 0,
+        );
+        if (nums.length) {
+          runtimeMinutes = Math.round(
+            nums.reduce((a, b) => a + b, 0) / nums.length,
+          );
+        }
       }
       tmdbBackdropUrl = buildTmdbBackdropUrl(detail.backdrop_path ?? null, "w1280");
 
@@ -259,6 +280,7 @@ export async function GET(request: NextRequest) {
       u.searchParams.set("apikey", OMDB_KEY);
       u.searchParams.set("t", resolvedTitle);
       u.searchParams.set("tomatoes", "true");
+      if (tmdbMedia === "tv") u.searchParams.set("type", "series");
       if (withYear && resolvedYear) u.searchParams.set("y", resolvedYear);
       const ores = await fetch(u.toString());
       return (await ores.json()) as OmdbJson;
@@ -399,10 +421,16 @@ export async function GET(request: NextRequest) {
       };
 
       /** Fewer queries = less quota (each search.list ≈ 100 units). */
-      const reviewQueries = [
-        `${resolvedTitle} ${resolvedYear} movie review`,
-        `${resolvedTitle} review no spoilers`,
-      ];
+      const reviewQueries =
+        tmdbMedia === "tv"
+          ? [
+              `${resolvedTitle} ${resolvedYear} tv show review`,
+              `${resolvedTitle} season review no spoilers`,
+            ]
+          : [
+              `${resolvedTitle} ${resolvedYear} movie review`,
+              `${resolvedTitle} review no spoilers`,
+            ];
       const seenReviews = new Set<string>();
       for (const q of reviewQueries) {
         if (stopYoutubeSearches) break;
@@ -430,10 +458,16 @@ export async function GET(request: NextRequest) {
       }
 
       const excludeClipIds = new Set(youtubeReviews.map((v) => v.videoId));
-      const memeQueries = [
-        `${resolvedTitle} ${resolvedYear} movie meme scene`,
-        `${resolvedTitle} iconic scene movie`,
-      ];
+      const memeQueries =
+        tmdbMedia === "tv"
+          ? [
+              `${resolvedTitle} ${resolvedYear} tv show scene`,
+              `${resolvedTitle} iconic tv moment`,
+            ]
+          : [
+              `${resolvedTitle} ${resolvedYear} movie meme scene`,
+              `${resolvedTitle} iconic scene movie`,
+            ];
       const seenMemes = new Set<string>();
       for (const q of memeQueries) {
         if (stopYoutubeSearches) break;
@@ -469,10 +503,14 @@ export async function GET(request: NextRequest) {
   }
 
   const fallbackYoutubeSearchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(
-    `${resolvedTitle} ${resolvedYear} movie review`,
+    tmdbMedia === "tv"
+      ? `${resolvedTitle} ${resolvedYear} tv show review`
+      : `${resolvedTitle} ${resolvedYear} movie review`,
   )}`;
   const fallbackYoutubeMemeSearchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(
-    `${resolvedTitle} ${resolvedYear} meme movie scene`,
+    tmdbMedia === "tv"
+      ? `${resolvedTitle} ${resolvedYear} tv meme scene`
+      : `${resolvedTitle} ${resolvedYear} meme movie scene`,
   )}`;
 
   const body: MovieEnrichResponse = {

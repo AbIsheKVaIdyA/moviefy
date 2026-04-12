@@ -81,6 +81,8 @@ export type MovieDetailViewProps = {
   userId: string | null;
   /** Shown on the review composer (first name, @handle, etc.). */
   viewerDisplayName?: string | null;
+  /** TMDB catalogue: movie (default) or tv — must match `media` on `/app/movie/[id]`. */
+  tmdbMedia?: "movie" | "tv";
 };
 
 /** Page: document flow (window scroll — avoids nested scroll traps). Dialog: Radix scroll area. */
@@ -146,11 +148,11 @@ export function MovieDetailView({
   supabase,
   userId,
   viewerDisplayName = null,
+  tmdbMedia = "movie",
 }: MovieDetailViewProps) {
   const [data, setData] = useState<MovieEnrichResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [heroTrailerActive, setHeroTrailerActive] = useState(false);
   const [trailerOpen, setTrailerOpen] = useState(false);
   const [activeTrailerKey, setActiveTrailerKey] = useState<string | null>(null);
   const [reviewEmbedId, setReviewEmbedId] = useState<string | null>(null);
@@ -179,16 +181,15 @@ export function MovieDetailView({
 
   useLayoutEffect(() => {
     if (!active || !movie?.tmdbId) return;
-    const cached = readEnrichCache(movie.tmdbId);
+    const cached = readEnrichCache(movie.tmdbId, tmdbMedia);
     if (cached) {
       setData(cached);
       setLoading(false);
     }
-  }, [active, movie?.tmdbId]);
+  }, [active, movie?.tmdbId, tmdbMedia]);
 
   useEffect(() => {
     if (!active) {
-      setHeroTrailerActive(false);
       setTrailerOpen(false);
       setReviewEmbedId(null);
       setReviewEmbedTitle("");
@@ -202,10 +203,6 @@ export function MovieDetailView({
   }, [active]);
 
   useEffect(() => {
-    if (!trailerOpen) setActiveTrailerKey(null);
-  }, [trailerOpen]);
-
-  useEffect(() => {
     if (!active || !movie) {
       setData(null);
       setError(null);
@@ -217,7 +214,7 @@ export function MovieDetailView({
     setError(null);
 
     const cached =
-      movie.tmdbId != null ? readEnrichCache(movie.tmdbId) : null;
+      movie.tmdbId != null ? readEnrichCache(movie.tmdbId, tmdbMedia) : null;
     if (cached) {
       setData(cached);
       setLoading(false);
@@ -230,6 +227,7 @@ export function MovieDetailView({
     params.set("title", movie.title);
     params.set("year", String(movie.year));
     if (movie.tmdbId != null) params.set("tmdbId", String(movie.tmdbId));
+    if (tmdbMedia === "tv") params.set("media", "tv");
 
     fetch(`/api/movie/enrich?${params.toString()}`, { signal: ctrl.signal })
       .then((res) => {
@@ -238,7 +236,7 @@ export function MovieDetailView({
       })
       .then((json) => {
         if (ctrl.signal.aborted) return;
-        if (movie.tmdbId != null) writeEnrichCache(movie.tmdbId, json);
+        if (movie.tmdbId != null) writeEnrichCache(movie.tmdbId, json, tmdbMedia);
         if (cached) {
           startTransition(() => setData(json));
         } else {
@@ -255,7 +253,7 @@ export function MovieDetailView({
       });
 
     return () => ctrl.abort();
-  }, [active, movie?.id, movie?.title, movie?.year, movie?.tmdbId]);
+  }, [active, movie?.id, movie?.title, movie?.year, movie?.tmdbId, tmdbMedia]);
 
   const movieHasTmdb = Boolean(
     movie &&
@@ -341,10 +339,6 @@ export function MovieDetailView({
 
   useEffect(() => {
     setShowAllDiscussion(false);
-  }, [movie?.id]);
-
-  useEffect(() => {
-    setHeroTrailerActive(false);
   }, [movie?.id]);
 
   useLayoutEffect(() => {
@@ -433,25 +427,10 @@ export function MovieDetailView({
     setReviewPostSaving(false);
   }, [supabase, userId, movie, takeReviewDraft, baselineTake, refreshTakeAfterSave]);
 
-  function trailerSearchUrl() {
-    if (!m) return "";
-    return `https://www.youtube.com/results?search_query=${encodeURIComponent(
-      `${m.title} ${m.year} official trailer`,
-    )}`;
-  }
-
   function openTrailer() {
     if (!m || loading) return;
     const key = data?.trailerYoutubeKey;
-    if (!key) {
-      window.open(trailerSearchUrl(), "_blank", "noopener,noreferrer");
-      return;
-    }
-    if (variant === "page") {
-      setHeroTrailerActive(true);
-      return;
-    }
-    setActiveTrailerKey(key);
+    setActiveTrailerKey(key ?? null);
     setTrailerOpen(true);
   }
 
@@ -492,19 +471,7 @@ export function MovieDetailView({
           )}
         >
                 <div className={heroMin}>
-                  {isPage && heroTrailerActive && data?.trailerYoutubeKey ? (
-                    <>
-                      <iframe
-                        className="absolute inset-0 z-[6] h-full w-full border-0 bg-black object-cover"
-                        src={`https://www.youtube-nocookie.com/embed/${data.trailerYoutubeKey}?rel=0&autoplay=1`}
-                        title="Trailer"
-                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                        allowFullScreen
-                        referrerPolicy="strict-origin-when-cross-origin"
-                      />
-                    </>
-                  ) : (
-                    <>
+                  <>
                       {heroImageUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
@@ -546,8 +513,8 @@ export function MovieDetailView({
                           className="group absolute inset-0 z-[5] flex flex-col items-center justify-center gap-3 bg-black/0 transition hover:bg-black/25 disabled:pointer-events-none disabled:opacity-40"
                           aria-label={
                             data?.trailerYoutubeKey
-                              ? "Play trailer in page"
-                              : "Find trailer on YouTube"
+                              ? "Play trailer"
+                              : "Trailer unavailable from TMDB"
                           }
                         >
                           <span className="flex size-[4.5rem] items-center justify-center rounded-full bg-white/95 text-black shadow-[0_12px_40px_rgba(0,0,0,0.55)] ring-4 ring-black/30 transition group-hover:scale-105 group-active:scale-95 sm:size-24 sm:ring-8">
@@ -558,12 +525,11 @@ export function MovieDetailView({
                               ? "Loading…"
                               : data?.trailerYoutubeKey
                                 ? "Watch trailer"
-                                : "Find trailer"}
+                                : "Trailer"}
                           </span>
                         </button>
                       ) : null}
-                    </>
-                  )}
+                  </>
                   {isPage ? (
                     <div className="pointer-events-none absolute inset-x-0 top-0 z-[12] flex items-start justify-between gap-2 bg-gradient-to-b from-black/25 via-transparent to-transparent px-3 pb-10 pt-[max(0.35rem,env(safe-area-inset-top))] sm:px-4 sm:pb-12">
                       <Link
@@ -573,16 +539,6 @@ export function MovieDetailView({
                       >
                         <ArrowLeft className="size-[1.35rem] shrink-0" strokeWidth={2.25} />
                       </Link>
-                      {heroTrailerActive && data?.trailerYoutubeKey ? (
-                        <button
-                          type="button"
-                          aria-label="Close trailer"
-                          className="pointer-events-auto inline-flex size-11 shrink-0 items-center justify-center rounded-full border border-white/[0.22] bg-white/[0.08] text-white shadow-[0_4px_24px_rgba(0,0,0,0.35)] backdrop-blur-xl transition hover:border-white/30 hover:bg-white/[0.14] active:scale-[0.97]"
-                          onClick={() => setHeroTrailerActive(false)}
-                        >
-                          <X className="size-[1.2rem] shrink-0" strokeWidth={2.25} />
-                        </button>
-                      ) : null}
                     </div>
                   ) : null}
                   {!isPage ? (
@@ -1295,8 +1251,8 @@ export function MovieDetailView({
                         loading
                           ? "Loading…"
                           : data?.trailerYoutubeKey
-                            ? "Play trailer here"
-                            : "Find trailer on YouTube"
+                            ? "Play trailer"
+                            : "Trailer not listed on TMDB"
                       }
                     >
                       <ListVideo className="size-4" />
@@ -1357,7 +1313,7 @@ export function MovieDetailView({
           showCloseButton
           backdropClassName="z-[120] bg-black/80 backdrop-blur-sm"
           className={cn(
-            "z-[130] w-[min(100vw-1rem,960px)] max-w-none gap-0 overflow-hidden border border-white/10 bg-background p-0 text-white sm:rounded-2xl",
+            "z-[130] w-[min(100vw-1rem,960px)] max-w-none sm:max-w-none md:max-w-none gap-0 overflow-hidden border border-white/10 bg-background p-0 text-white sm:rounded-2xl",
           )}
         >
           <div className="flex max-h-[90dvh] flex-col">
@@ -1385,35 +1341,41 @@ export function MovieDetailView({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={trailerOpen} onOpenChange={setTrailerOpen}>
+      <Dialog
+        open={trailerOpen}
+        onOpenChange={(o) => {
+          setTrailerOpen(o);
+          if (!o) setActiveTrailerKey(null);
+        }}
+      >
         <DialogContent
           showCloseButton
-          backdropClassName="z-[90] bg-black/85 backdrop-blur-md data-closed:animate-out data-closed:fade-out-0"
+          backdropClassName="z-[190] bg-black/80 backdrop-blur-md data-closed:animate-out data-closed:fade-out-0"
           className={cn(
-            "z-[100] max-h-[92dvh] w-[calc(100vw-0.75rem)] max-w-none gap-0 overflow-hidden rounded-2xl border border-white/[0.12] bg-[#050505] p-0 text-white shadow-[0_0_0_1px_rgba(255,255,255,0.06)_inset,0_25px_80px_-20px_rgba(0,0,0,0.9)] ring-0 sm:max-w-none sm:w-[min(96vw,1280px)] sm:rounded-3xl",
+            "z-[200] max-h-[min(92dvh,85vh)] w-[min(calc(100vw-1.5rem),95vw,85rem)] max-w-none sm:max-w-none md:max-w-none lg:max-w-none gap-0 overflow-hidden rounded-2xl border border-white/[0.12] bg-[#050505] p-0 text-white shadow-[0_0_0_1px_rgba(255,255,255,0.06)_inset,0_25px_80px_-20px_rgba(0,0,0,0.9)] ring-0 sm:rounded-2xl",
             "data-open:animate-in data-open:fade-in-0 data-open:zoom-in-[0.98] data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-[0.98]",
-            "[&_[data-slot=dialog-close]]:top-4 [&_[data-slot=dialog-close]]:right-4 [&_[data-slot=dialog-close]]:size-10 [&_[data-slot=dialog-close]]:rounded-full [&_[data-slot=dialog-close]]:bg-white/10 [&_[data-slot=dialog-close]]:hover:bg-white/20",
+            "[&_[data-slot=dialog-close]]:top-3 [&_[data-slot=dialog-close]]:right-3 [&_[data-slot=dialog-close]]:size-9 [&_[data-slot=dialog-close]]:rounded-full [&_[data-slot=dialog-close]]:bg-white/10 [&_[data-slot=dialog-close]]:hover:bg-white/20",
           )}
         >
           <div className="flex max-h-[92dvh] flex-col">
-            <div className="flex items-start justify-between gap-4 border-b border-white/10 bg-gradient-to-b from-zinc-900/90 to-zinc-950/95 px-4 py-4 sm:px-6 sm:py-5">
+            <div className="flex shrink-0 items-start justify-between gap-4 border-b border-white/10 bg-gradient-to-b from-zinc-900/90 to-zinc-950/95 px-4 py-3 sm:px-5 sm:py-4">
               <div className="min-w-0 pr-10">
                 <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-primary/90">
                   Trailer
                 </p>
-                <DialogTitle className="mt-1 text-left font-heading text-xl font-semibold leading-snug text-white sm:text-2xl">
+                <DialogTitle className="mt-0.5 text-left font-heading text-lg font-semibold leading-snug text-white sm:text-xl">
                   {m?.title ?? "Video"}
                 </DialogTitle>
                 {m ? (
-                  <p className="mt-1 text-sm text-white/50">
-                    {m.year} · Tap outside or ✕ to close
+                  <p className="mt-1 text-xs text-white/50">
+                    {m.year} · Plays here · Close with ✕ or outside click
                   </p>
                 ) : null}
               </div>
             </div>
 
             {activeTrailerKey ? (
-              <div className="relative w-full bg-black">
+              <div className="relative min-h-0 w-full flex-1 bg-black">
                 <div className="relative aspect-video w-full shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]">
                   <iframe
                     className="absolute inset-0 h-full w-full border-0"
@@ -1425,41 +1387,20 @@ export function MovieDetailView({
                   />
                 </div>
               </div>
-            ) : null}
+            ) : (
+              <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 py-10 text-center">
+                <ListVideo className="size-10 text-white/25" aria-hidden />
+                <p className="max-w-sm text-sm text-white/60">
+                  TMDB doesn&apos;t have an official trailer ID for this title yet, so
+                  nothing can be embedded here. Try again after metadata updates.
+                </p>
+              </div>
+            )}
 
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 bg-zinc-950/90 px-4 py-3 sm:px-6">
-              <p className="text-xs text-white/45">
-                Playback via YouTube · HD when available
+            <div className="shrink-0 border-t border-white/10 bg-zinc-950/90 px-4 py-2.5 sm:px-5">
+              <p className="text-center text-[11px] text-white/40">
+                Embedded player · stays in Moviefy
               </p>
-              {activeTrailerKey ? (
-                <a
-                  href={`https://www.youtube.com/watch?v=${activeTrailerKey}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={buttonVariants({
-                    variant: "ghost",
-                    size: "sm",
-                    className: "h-9 gap-1.5 text-white/80 hover:text-white",
-                  })}
-                >
-                  Open in YouTube
-                  <ExternalLink className="size-3.5" />
-                </a>
-              ) : (
-                <a
-                  href={trailerSearchUrl()}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={buttonVariants({
-                    variant: "ghost",
-                    size: "sm",
-                    className: "h-9 gap-1.5 text-white/80 hover:text-white",
-                  })}
-                >
-                  Search on YouTube
-                  <ExternalLink className="size-3.5" />
-                </a>
-              )}
             </div>
           </div>
         </DialogContent>

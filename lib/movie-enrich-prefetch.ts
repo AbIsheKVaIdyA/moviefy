@@ -15,14 +15,20 @@ function tmdbIdFromMovie(movie: Movie): number | null {
   return null;
 }
 
-function cacheKey(tmdbId: number): string {
-  return `${CACHE_PREFIX}${tmdbId}`;
+function cacheKey(tmdbId: number, media: "movie" | "tv" = "movie"): string {
+  return `${CACHE_PREFIX}${media}:${tmdbId}`;
 }
 
-export function readEnrichCache(tmdbId: number): MovieEnrichResponse | null {
+export function readEnrichCache(
+  tmdbId: number,
+  media: "movie" | "tv" = "movie",
+): MovieEnrichResponse | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = sessionStorage.getItem(cacheKey(tmdbId));
+    let raw = sessionStorage.getItem(cacheKey(tmdbId, media));
+    if (!raw && media === "movie") {
+      raw = sessionStorage.getItem(`${CACHE_PREFIX}${tmdbId}`);
+    }
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Cached;
     if (
@@ -31,7 +37,7 @@ export function readEnrichCache(tmdbId: number): MovieEnrichResponse | null {
       !parsed.body ||
       Date.now() - parsed.at > TTL_MS
     ) {
-      sessionStorage.removeItem(cacheKey(tmdbId));
+      sessionStorage.removeItem(cacheKey(tmdbId, media));
       return null;
     }
     return parsed.body;
@@ -40,18 +46,25 @@ export function readEnrichCache(tmdbId: number): MovieEnrichResponse | null {
   }
 }
 
-export function writeEnrichCache(tmdbId: number, body: MovieEnrichResponse): void {
+export function writeEnrichCache(
+  tmdbId: number,
+  body: MovieEnrichResponse,
+  media: "movie" | "tv" = "movie",
+): void {
   if (typeof window === "undefined") return;
   try {
     const payload: Cached = { at: Date.now(), body };
-    sessionStorage.setItem(cacheKey(tmdbId), JSON.stringify(payload));
+    sessionStorage.setItem(cacheKey(tmdbId, media), JSON.stringify(payload));
   } catch {
     /* quota / private mode */
   }
 }
 
 /** Fetches enrich JSON and stores it for the movie detail page (call before `router.push`). */
-export async function prefetchMovieEnrich(movie: Movie): Promise<boolean> {
+export async function prefetchMovieEnrich(
+  movie: Movie,
+  media: "movie" | "tv" = "movie",
+): Promise<boolean> {
   const tid = tmdbIdFromMovie(movie);
   if (tid == null || tid <= 0) return false;
   try {
@@ -59,10 +72,11 @@ export async function prefetchMovieEnrich(movie: Movie): Promise<boolean> {
     params.set("title", movie.title);
     params.set("year", String(movie.year));
     params.set("tmdbId", String(tid));
+    if (media === "tv") params.set("media", "tv");
     const res = await fetch(`/api/movie/enrich?${params.toString()}`);
     if (!res.ok) return false;
     const body = (await res.json()) as MovieEnrichResponse;
-    writeEnrichCache(tid, body);
+    writeEnrichCache(tid, body, media);
     return true;
   } catch {
     return false;

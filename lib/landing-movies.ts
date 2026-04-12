@@ -2,7 +2,8 @@ import type { TmdbDiscoverItem } from "@/lib/movie-enrich-types";
 import type { Movie } from "@/lib/types";
 import { movieFromTmdbDiscoverItem } from "@/lib/tmdb-genre-map";
 
-const PLACEHOLDER_GRADIENTS = [
+/** Gradient-only tiles for marketing layout when TMDB is off or still loading — not real titles. */
+const LANDING_DECOR_GRADIENTS = [
   "from-violet-950 via-indigo-900 to-slate-950",
   "from-emerald-950 via-zinc-900 to-black",
   "from-rose-900 via-pink-950 to-violet-950",
@@ -13,34 +14,34 @@ const PLACEHOLDER_GRADIENTS = [
   "from-stone-900 via-neutral-950 to-black",
 ] as const;
 
-/** When TMDB is unavailable, still render the landing visuals. */
-export function placeholderLandingMovies(count = 12): Movie[] {
+/** Neutral poster slots (empty title) for landing visuals only. */
+export function landingDecorMovies(count: number): Movie[] {
   return Array.from({ length: count }, (_, i) => ({
-    id: `landing-ph-${i}`,
-    title: "Add TMDB_API_KEY for live posters",
-    year: 2024,
+    id: `decor-${i}`,
+    title: "",
+    year: 0,
     genre: "Drama",
-    posterClass: PLACEHOLDER_GRADIENTS[i % PLACEHOLDER_GRADIENTS.length]!,
+    posterClass: LANDING_DECOR_GRADIENTS[i % LANDING_DECOR_GRADIENTS.length]!,
     posterImage: "",
     director: "",
   }));
 }
 
 export async function getLandingMovies(): Promise<Movie[]> {
-  const key = process.env.TMDB_API_KEY;
-  if (!key) return placeholderLandingMovies();
+  const key = process.env.TMDB_API_KEY?.trim();
+  if (!key) return [];
   try {
     const u = new URL("https://api.themoviedb.org/3/movie/popular");
     u.searchParams.set("api_key", key);
     u.searchParams.set("page", "1");
     const res = await fetch(u.toString(), { next: { revalidate: 3600 } });
-    if (!res.ok) return placeholderLandingMovies();
+    if (!res.ok) return [];
     const data = (await res.json()) as { results?: TmdbDiscoverItem[] };
     const results = data.results ?? [];
     const mapped = results.slice(0, 12).map(movieFromTmdbDiscoverItem);
-    return mapped.length ? mapped : placeholderLandingMovies();
+    return mapped.length ? mapped : [];
   } catch {
-    return placeholderLandingMovies();
+    return [];
   }
 }
 

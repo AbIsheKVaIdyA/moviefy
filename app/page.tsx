@@ -15,6 +15,7 @@ import { buttonVariants } from "@/components/ui/button";
 import {
   buildLandingPosterWall,
   getLandingMovies,
+  landingDecorMovies,
   landingHeroFocus,
 } from "@/lib/landing-movies";
 import type { Movie } from "@/lib/types";
@@ -40,7 +41,7 @@ function PosterTile({
     >
       <PosterImage
         src={movie.posterImage}
-        alt={movie.title}
+        alt={movie.title || ""}
         fill
         priority={priority}
         placeholderGradient={movie.posterClass}
@@ -48,18 +49,40 @@ function PosterTile({
         sizes={sizes}
       />
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 transition duration-300 group-hover:opacity-100" />
-      <p className="pointer-events-none absolute bottom-1.5 left-2 right-2 translate-y-2 text-[10px] font-medium leading-tight text-white opacity-0 transition duration-300 group-hover:translate-y-0 group-hover:opacity-100 sm:text-xs">
-        {movie.title}
-      </p>
+      {movie.title.trim() ? (
+        <p className="pointer-events-none absolute bottom-1.5 left-2 right-2 translate-y-2 text-[10px] font-medium leading-tight text-white opacity-0 transition duration-300 group-hover:translate-y-0 group-hover:opacity-100 sm:text-xs">
+          {movie.title}
+        </p>
+      ) : null}
     </div>
   );
 }
 
 export default async function Home() {
   const popular = await getLandingMovies();
-  const posterWall = buildLandingPosterWall(popular);
-  const heroFocus = landingHeroFocus(popular);
-  const marqueeMovies = [...popular, ...popular, ...popular];
+  const posterWall = popular.length
+    ? buildLandingPosterWall(popular)
+    : landingDecorMovies(28);
+  const heroFocus =
+    popular.length >= 6
+      ? landingHeroFocus(popular)
+      : popular.length > 0
+        ? [...popular, ...landingDecorMovies(6 - popular.length)]
+        : landingDecorMovies(6);
+  const marqueeSource = popular.length ? popular : landingDecorMovies(12);
+  const marqueeMovies = [...marqueeSource, ...marqueeSource, ...marqueeSource];
+  const bentoTop =
+    popular.length >= 5
+      ? popular.slice(0, 5)
+      : [...popular, ...landingDecorMovies(5 - popular.length)];
+  const bentoBottom =
+    popular.length >= 10
+      ? popular.slice(5, 10)
+      : popular.length > 5
+        ? [...popular.slice(5), ...landingDecorMovies(10 - popular.length)]
+        : landingDecorMovies(5);
+  const shelfMovies = popular.length ? popular : landingDecorMovies(10);
+  const mobileStrip = popular.length ? popular : landingDecorMovies(8);
 
   return (
     <main className="relative min-h-dvh overflow-x-hidden text-white">
@@ -206,14 +229,14 @@ export default async function Home() {
 
             {/* Mobile poster strip */}
             <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] lg:hidden [&::-webkit-scrollbar]:hidden">
-              {popular.map((m) => (
+              {mobileStrip.map((m) => (
                 <div
                   key={`mob-${m.id}`}
                   className="relative aspect-[2/3] w-[100px] shrink-0 overflow-hidden rounded-xl ring-1 ring-white/10"
                 >
                   <PosterImage
                     src={m.posterImage}
-                    alt={m.title}
+                    alt={m.title || ""}
                     fill
                     placeholderGradient={m.posterClass}
                     className="object-cover"
@@ -228,27 +251,25 @@ export default async function Home() {
         {/* Marquee */}
         <section className="relative mt-10 -mx-4 overflow-hidden border-y border-white/[0.06] bg-zinc-950/50 py-5 sm:-mx-6 lg:-mx-10">
           <p className="mb-3 px-6 text-center text-[10px] font-semibold uppercase tracking-[0.35em] text-zinc-500">
-            Now trending on shelves
+            {popular.length ? "Now trending on shelves" : "Poster moodboard"}
           </p>
           <div className="overflow-hidden">
             <div className="landing-marquee-track gap-3 pr-3">
-              {[0, 1].map((dup) =>
-                marqueeMovies.map((m, i) => (
-                  <div
-                    key={`mq-${dup}-${m.id}-${i}`}
-                    className="relative aspect-[2/3] w-[72px] shrink-0 overflow-hidden rounded-lg ring-1 ring-white/10 sm:w-[88px]"
-                  >
-                    <PosterImage
-                      src={m.posterImage}
-                      alt=""
-                      fill
-                      placeholderGradient={m.posterClass}
-                      className="object-cover"
-                      sizes="90px"
-                    />
-                  </div>
-                )),
-              )}
+              {marqueeMovies.map((m, i) => (
+                <div
+                  key={`mq-${m.id}-${i}`}
+                  className="relative aspect-[2/3] w-[72px] shrink-0 overflow-hidden rounded-lg ring-1 ring-white/10 sm:w-[88px]"
+                >
+                  <PosterImage
+                    src={m.posterImage}
+                    alt=""
+                    fill
+                    placeholderGradient={m.posterClass}
+                    className="object-cover"
+                    sizes="90px"
+                  />
+                </div>
+              ))}
             </div>
           </div>
         </section>
@@ -264,7 +285,7 @@ export default async function Home() {
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 lg:grid-rows-2">
             <article className="group relative overflow-hidden rounded-3xl border border-white/[0.08] bg-gradient-to-br from-zinc-900/90 to-zinc-950 p-6 lg:col-span-2 lg:row-span-2 lg:p-8">
               <div className="absolute -right-8 -top-8 flex gap-2 opacity-40 transition group-hover:opacity-60">
-                {popular.slice(0, 5).map((m) => (
+                {bentoTop.map((m) => (
                   <div
                     key={m.id}
                     className="relative h-32 w-20 rotate-6 overflow-hidden rounded-lg shadow-xl ring-1 ring-white/10"
@@ -324,14 +345,14 @@ export default async function Home() {
 
             <article className="rounded-3xl border border-white/[0.08] bg-gradient-to-br from-fuchsia-950/40 to-zinc-950 p-6 md:col-span-2 lg:col-span-2">
               <div className="flex flex-wrap gap-3">
-                {popular.slice(5, 10).map((m) => (
+                {bentoBottom.map((m) => (
                   <div
                     key={m.id}
                     className="relative aspect-[2/3] w-[56px] overflow-hidden rounded-md ring-1 ring-white/10 sm:w-[64px]"
                   >
                     <PosterImage
                       src={m.posterImage}
-                      alt={m.title}
+                      alt={m.title || ""}
                       fill
                       placeholderGradient={m.posterClass}
                       className="object-cover"
@@ -354,7 +375,11 @@ export default async function Home() {
           <div className="mb-5 flex items-end justify-between gap-4">
             <div>
               <h2 className="font-heading text-2xl font-semibold sm:text-3xl">Shelf preview</h2>
-              <p className="mt-1 text-sm text-zinc-500">Every title is a real TMDB poster — hover for names.</p>
+              <p className="mt-1 text-sm text-zinc-500">
+                {popular.length
+                  ? "Every title is a real TMDB poster — hover for names."
+                  : "Gradient placeholders until TMDB_API_KEY is set — then real posters load here."}
+              </p>
             </div>
             <Link
               href="/?auth=sign-in&next=%2Fapp%2Fexplore"
@@ -364,17 +389,21 @@ export default async function Home() {
             </Link>
           </div>
           <div className="flex gap-4 overflow-x-auto pb-4 pt-1 [-ms-overflow-style:none] [scrollbar-width:none] snap-x snap-mandatory [&::-webkit-scrollbar]:hidden">
-            {popular.map((m) => (
+            {shelfMovies.map((m) => (
               <div key={`shelf-${m.id}`} className="snap-start">
                 <PosterTile
                   movie={m}
                   className="aspect-[2/3] w-[140px] shrink-0 rounded-2xl sm:w-[168px]"
                   sizes="168px"
                 />
-                <p className="mt-2 max-w-[168px] text-xs font-medium text-zinc-300 line-clamp-1">{m.title}</p>
-                <p className="text-[11px] text-zinc-500">
-                  {m.year} · {m.genre}
-                </p>
+                {m.title.trim() ? (
+                  <>
+                    <p className="mt-2 max-w-[168px] text-xs font-medium text-zinc-300 line-clamp-1">{m.title}</p>
+                    <p className="text-[11px] text-zinc-500">
+                      {m.year} · {m.genre}
+                    </p>
+                  </>
+                ) : null}
               </div>
             ))}
           </div>

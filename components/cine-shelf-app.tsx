@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { PosterImage } from "@/components/poster-image";
 import {
+  CalendarDays,
   ChevronDown,
   ChevronUp,
   Clapperboard,
@@ -624,6 +625,17 @@ export function MoviefyApp() {
               <Compass className="size-4" />
               Explore
             </Link>
+            <Link
+              href="/app/releases"
+              className={cn(
+                buttonVariants({ variant: "ghost" }),
+                "justify-start gap-2 text-sm",
+                pathname?.startsWith("/app/releases") && "bg-muted/70 text-foreground",
+              )}
+            >
+              <CalendarDays className="size-4" />
+              Release radar
+            </Link>
             <button
               type="button"
               className={cn(
@@ -770,6 +782,16 @@ export function MoviefyApp() {
               >
                 <Compass className="size-4" />
                 Explore
+              </Link>
+              <Link
+                href="/app/releases"
+                className={cn(
+                  buttonVariants({ variant: "secondary", size: "sm" }),
+                  "gap-1.5 border-0 bg-muted/50 text-foreground hover:bg-muted/70 lg:hidden",
+                )}
+              >
+                <CalendarDays className="size-4" />
+                <span className="hidden sm:inline">Radar</span>
               </Link>
               <Button
                 type="button"

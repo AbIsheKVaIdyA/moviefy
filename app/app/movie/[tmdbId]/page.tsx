@@ -40,7 +40,13 @@ export default function TmdbMoviePage() {
     return movieFromDetailPageParams(n, sp);
   }, [params, sp]);
 
-  const backHref = sp.get("from") === "explore" ? "/app/explore" : "/app";
+  const backHref =
+    sp.get("from") === "explore"
+      ? "/app/explore"
+      : sp.get("from") === "releases"
+        ? "/app/releases"
+        : "/app";
+  const tmdbMedia = sp.get("media") === "tv" ? "tv" : "movie";
 
   const watchedPlaylist = useMemo(
     () => libraryPlaylists.find((p) => p.kind === "watched"),
@@ -150,6 +156,7 @@ export default function TmdbMoviePage() {
         supabase={client}
         userId={session?.user?.id ?? null}
         viewerDisplayName={viewerDisplayName}
+        tmdbMedia={tmdbMedia}
       />
       {toastMsg ? (
         <div

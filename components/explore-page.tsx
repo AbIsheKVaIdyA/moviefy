@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
+  CalendarDays,
   Clapperboard,
   Compass,
   Globe,
@@ -660,6 +661,13 @@ export function ExplorePage() {
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+            <Link
+              href="/app/releases"
+              className="inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition hover:bg-muted/40 hover:text-foreground"
+            >
+              <CalendarDays className="size-4 shrink-0" />
+              <span className="hidden sm:inline">Release radar</span>
+            </Link>
             <Button
               type="button"
               variant="ghost"
