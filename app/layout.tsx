@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { Analytics } from "@vercel/analytics/next";
 import { DM_Sans, JetBrains_Mono, Oswald } from "next/font/google";
 import { SupabaseAppProvider } from "@/components/supabase-app-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -58,6 +59,7 @@ export default function RootLayout({
         <SupabaseAppProvider>
           <TooltipProvider>{children}</TooltipProvider>
         </SupabaseAppProvider>
+        <Analytics />
       </body>
     </html>
   );
