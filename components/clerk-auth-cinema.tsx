@@ -171,6 +171,57 @@ function CenterScreenMist({ movies }: { movies: ClerkAuthCinemaMovie[] }) {
  * Full-screen ambient posters on small viewports only (rails are `md+`).
  * Heavy scrim keeps Clerk readable; `pointer-events-none` never blocks taps.
  */
+function MobilePosterMarqueeRow({
+  loop,
+  animationClass,
+  positionClass,
+  sizeClass,
+  blurClass,
+}: {
+  loop: string[];
+  animationClass: string;
+  positionClass: string;
+  sizeClass: string;
+  blurClass?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "absolute left-0 right-0 overflow-hidden",
+        positionClass,
+        blurClass,
+      )}
+      style={{
+        maskImage:
+          "linear-gradient(to right, transparent, black 6%, black 94%, transparent)",
+        WebkitMaskImage:
+          "linear-gradient(to right, transparent, black 6%, black 94%, transparent)",
+      }}
+    >
+      <div className={cn("flex w-max gap-3 px-2", animationClass)}>
+        {loop.map((path, i) => (
+          <div
+            key={`${animationClass}-${path}-${i}`}
+            className={cn(
+              "relative aspect-[2/3] shrink-0 overflow-hidden rounded-lg ring-1 ring-white/20 shadow-lg shadow-black/40",
+              sizeClass,
+            )}
+          >
+            <img
+              src={tmdbPosterUrl(path, "w342")}
+              alt=""
+              className="h-full w-full object-cover saturate-[0.92]"
+              loading="lazy"
+              decoding="async"
+            />
+            <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/30 to-transparent" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function ClerkAuthMobileBackdrop() {
   const movies = useClerkAuthCinemaMovies();
   const paths = useMemo(
@@ -185,62 +236,31 @@ export function ClerkAuthMobileBackdrop() {
       className="pointer-events-none absolute inset-0 z-0 overflow-hidden md:hidden"
       aria-hidden
     >
-      <div className="absolute inset-0 opacity-[0.26]">
-        <div
-          className="absolute left-0 right-0 top-[10%] h-[5.5rem] overflow-hidden"
-          style={{
-            maskImage:
-              "linear-gradient(to right, transparent, black 12%, black 88%, transparent)",
-            WebkitMaskImage:
-              "linear-gradient(to right, transparent, black 12%, black 88%, transparent)",
-          }}
-        >
-          <div className="flex w-max gap-2.5 px-3 animate-auth-mobile-poster-x">
-            {loop.map((path, i) => (
-              <div
-                key={`m-t-${path}-${i}`}
-                className="relative aspect-[2/3] w-16 shrink-0 overflow-hidden rounded-md ring-1 ring-white/15"
-              >
-                <img
-                  src={tmdbPosterUrl(path, "w185")}
-                  alt=""
-                  className="h-full w-full object-cover saturate-[0.88]"
-                  loading="lazy"
-                  decoding="async"
-                />
-              </div>
-            ))}
-          </div>
-        </div>
-        <div
-          className="absolute bottom-[12%] left-0 right-0 h-[5.5rem] overflow-hidden"
-          style={{
-            maskImage:
-              "linear-gradient(to right, transparent, black 10%, black 90%, transparent)",
-            WebkitMaskImage:
-              "linear-gradient(to right, transparent, black 10%, black 90%, transparent)",
-          }}
-        >
-          <div className="flex w-max gap-2.5 px-3 animate-auth-mobile-poster-x-reverse">
-            {loop.map((path, i) => (
-              <div
-                key={`m-b-${path}-${i}`}
-                className="relative aspect-[2/3] w-16 shrink-0 overflow-hidden rounded-md ring-1 ring-white/15"
-              >
-                <img
-                  src={tmdbPosterUrl(path, "w185")}
-                  alt=""
-                  className="h-full w-full object-cover saturate-[0.88]"
-                  loading="lazy"
-                  decoding="async"
-                />
-              </div>
-            ))}
-          </div>
-        </div>
+      {/* Posters: visible strength; scrims below stay translucent so motion reads on phones */}
+      <div className="absolute inset-0">
+        <MobilePosterMarqueeRow
+          loop={loop}
+          animationClass="animate-auth-mobile-poster-x"
+          positionClass="top-[6%] h-[6.5rem]"
+          sizeClass="w-[4.75rem] sm:w-20"
+        />
+        <MobilePosterMarqueeRow
+          loop={loop}
+          animationClass="animate-auth-mobile-poster-x-reverse"
+          positionClass="top-[38%] h-[7rem] opacity-90"
+          sizeClass="w-[5.25rem] sm:w-[5.5rem]"
+          blurClass="blur-[1.5px]"
+        />
+        <MobilePosterMarqueeRow
+          loop={loop}
+          animationClass="animate-auth-mobile-poster-x"
+          positionClass="bottom-[8%] h-[6.5rem]"
+          sizeClass="w-[4.75rem] sm:w-20"
+        />
       </div>
-      <div className="absolute inset-0 bg-gradient-to-b from-[#040406]/90 via-[#040406]/82 to-[#040406]/92" />
-      <div className="absolute inset-0 bg-gradient-to-b from-black/35 via-transparent to-black/45" />
+      {/* Readability: was ~82–92% solid — drowned posters; keep Clerk legible with lighter wash */}
+      <div className="absolute inset-0 bg-gradient-to-b from-[#040406]/72 via-[#040406]/58 to-[#040406]/76" />
+      <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-black/10 to-black/28" />
     </div>
   );
 }

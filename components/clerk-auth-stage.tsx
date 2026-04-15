@@ -110,7 +110,7 @@ export function ClerkAuthStage({ mode }: ClerkAuthStageProps) {
         <ClerkAuthMobileBackdrop />
         {/* Theatre wash + spotlights */}
         <div
-          className="pointer-events-none absolute inset-0 z-[1]"
+          className="pointer-events-none absolute inset-0 z-[1] max-md:opacity-[0.42] md:opacity-100"
           aria-hidden
         >
           <div className="absolute inset-0 bg-[radial-gradient(ellipse_85%_55%_at_50%_-8%,oklch(0.42_0.2_300/0.35),transparent_58%)]" />
