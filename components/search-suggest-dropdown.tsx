@@ -1,6 +1,7 @@
 "use client";
 
 import { Clapperboard, Sparkles, User, Users } from "lucide-react";
+import { MoviefyBrandLoader } from "@/components/moviefy-brand-loader";
 import { PosterImage } from "@/components/poster-image";
 import type { SearchSuggestMovieRow, SearchSuggestResponse } from "@/lib/search-suggest-types";
 import type { Genre } from "@/lib/types";
@@ -101,10 +102,14 @@ export function SearchSuggestDropdown({
     >
       <div className="p-3 sm:p-4">
         {loading && !data ? (
-          <div className="space-y-3 py-6">
-            <div className="h-16 animate-pulse rounded-xl bg-white/[0.06]" />
-            <div className="h-10 animate-pulse rounded-lg bg-white/[0.05]" />
-            <div className="h-10 animate-pulse rounded-lg bg-white/[0.05]" />
+          <div className="py-8">
+            <MoviefyBrandLoader
+              size="sm"
+              label="Searching films, people, and genres…"
+              className={cn(
+                isExplore ? "[&_p]:text-white/55" : "[&_p]:text-muted-foreground",
+              )}
+            />
           </div>
         ) : null}
 
@@ -183,8 +188,7 @@ export function SearchSuggestDropdown({
                   <p className={cn("text-xs", isExplore ? "text-white/50" : "text-muted-foreground")}>
                     {top.person.knownForDepartment === "Acting"
                       ? "Actor / performer"
-                      : top.person.knownForDepartment ?? "Person"}{" "}
-                    · TMDB
+                      : top.person.knownForDepartment ?? "Person"}
                   </p>
                 </div>
               </button>
@@ -416,7 +420,8 @@ export function SearchSuggestDropdown({
 
         {!data?.configured && query.trim().length >= 2 ? (
           <p className={cn("mt-3 text-center text-xs", isExplore ? "text-amber-200/70" : "text-amber-200/80")}>
-            Add TMDB_API_KEY for live movies & people. Genres and playlists still work.
+            Live film &amp; people search isn&apos;t enabled here — genres and playlists still
+            work.
           </p>
         ) : null}
       </div>

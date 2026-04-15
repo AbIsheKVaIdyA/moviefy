@@ -29,6 +29,10 @@ import {
   Plus,
   X,
 } from "lucide-react";
+import {
+  MoviefyBrandLoader,
+  MoviefyBrandLoaderRow,
+} from "@/components/moviefy-brand-loader";
 import { MovieDetailReviewsSection } from "@/components/movie-detail-reviews-section";
 import { MovieVibeDonut } from "@/components/movie-vibe-donut";
 import {
@@ -126,12 +130,14 @@ function MovieDetailPageLoadingGate({
           <ArrowLeft className="size-[1.35rem] shrink-0" strokeWidth={2.25} />
         </Link>
       </div>
-      <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6 pb-24">
-        <Loader2 className="size-10 animate-spin text-primary/90" aria-hidden />
+      <div className="flex flex-1 flex-col items-center justify-center gap-6 px-6 pb-24">
         <div className="max-w-sm text-center">
           <p className="font-heading text-lg font-semibold text-white">{movie.title}</p>
-          <p className="mt-2 text-sm text-white/50">Loading details…</p>
         </div>
+        <MoviefyBrandLoader
+          size="lg"
+          label="Pulling scores, where to watch, and reviews — almost there."
+        />
       </div>
     </div>
   );
@@ -567,7 +573,7 @@ export function MovieDetailView({
                           aria-label={
                             data?.trailerYoutubeKey
                               ? "Play trailer"
-                              : "Trailer unavailable from TMDB"
+                              : "Trailer not available for this title yet"
                           }
                         >
                           <span className="flex size-[4.5rem] items-center justify-center rounded-full bg-white/95 text-black shadow-[0_12px_40px_rgba(0,0,0,0.55)] ring-4 ring-black/30 transition group-hover:scale-105 group-active:scale-95 sm:size-24 sm:ring-8">
@@ -575,7 +581,7 @@ export function MovieDetailView({
                           </span>
                           <span className="rounded-full bg-black/55 px-4 py-1.5 text-xs font-medium text-white/95 backdrop-blur-sm sm:text-sm">
                             {loading
-                              ? "Loading…"
+                              ? "Preparing…"
                               : data?.trailerYoutubeKey
                                 ? "Watch trailer"
                                 : "Trailer"}
@@ -740,7 +746,7 @@ export function MovieDetailView({
                               onClick={() => openTrailer()}
                             >
                               <ListVideo className="mr-2 size-5" />
-                              {loading ? "Trailer…" : "Trailer"}
+                              {loading ? "Wait…" : "Trailer"}
                             </Button>
                             <Button
                               type="button"
@@ -758,10 +764,10 @@ export function MovieDetailView({
                       </header>
 
                       {loading ? (
-                        <div className="flex items-center gap-2 py-2 text-sm text-white/50">
-                          <Loader2 className="size-4 animate-spin shrink-0" />
-                          Loading synopsis, scores, streaming, and reviews…
-                        </div>
+                        <MoviefyBrandLoaderRow
+                          className="my-1"
+                          label="Gathering synopsis, scores, where to watch, and video reviews…"
+                        />
                       ) : error ? (
                         <p className="text-sm text-amber-200/90">{error}</p>
                       ) : null}
@@ -799,7 +805,7 @@ export function MovieDetailView({
                             </p>
                           ) : (
                             <p className="max-w-3xl text-sm text-white/50 sm:text-base">
-                              No synopsis returned. TMDB match helps fill this in.
+                              We don&apos;t have a synopsis for this title yet.
                             </p>
                           ))}
                       </section>
@@ -1196,14 +1202,14 @@ export function MovieDetailView({
                       onClick={handleTrailerClick}
                       title={
                         loading
-                          ? "Loading…"
+                          ? "Preparing trailer"
                           : data?.trailerYoutubeKey
                             ? "Play trailer"
-                            : "Trailer not listed on TMDB"
+                            : "Trailer not listed yet"
                       }
                     >
                       <ListVideo className="size-4" />
-                      {loading ? "Trailer…" : "Trailer"}
+                      {loading ? "Wait…" : "Trailer"}
                     </Button>
                     <Button
                       type="button"

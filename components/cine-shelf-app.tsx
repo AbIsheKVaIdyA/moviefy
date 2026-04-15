@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { PosterImage } from "@/components/poster-image";
@@ -15,12 +15,8 @@ import {
   Globe,
   Heart,
   Home,
-  Keyboard,
   Link2,
   ListOrdered,
-  Loader2,
-  LogOut,
-  Settings,
   SquareStack,
   Lock,
   Plus,
@@ -29,6 +25,7 @@ import {
   MoreVertical,
   X,
 } from "lucide-react";
+import { MoviefyBrandLoader } from "@/components/moviefy-brand-loader";
 import { useSupabaseApp } from "@/components/supabase-app-provider";
 import { movieFromTmdbDiscoverItem } from "@/lib/tmdb-genre-map";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
@@ -48,7 +45,7 @@ import {
   setMovieSavedDb,
   updatePlaylistMeta,
 } from "@/lib/supabase/playlist-service";
-import { avatarLetter, greetingFirstName } from "@/lib/display-name";
+import { greetingFirstName } from "@/lib/display-name";
 import type { TmdbDiscoverResponse } from "@/lib/movie-enrich-types";
 import type { Genre, Movie, Playlist, PlaylistMovie } from "@/lib/types";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -57,13 +54,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -84,15 +78,10 @@ import {
 import { cn } from "@/lib/utils";
 import { prefetchMovieEnrich } from "@/lib/movie-enrich-prefetch";
 import { movieToDetailPageHref } from "@/lib/movie-detail-nav";
-import { discoverItemFromSuggestMovie } from "@/lib/search-suggest-mappers";
-import type {
-  SearchSuggestMovieRow,
-  SearchSuggestResponse,
-} from "@/lib/search-suggest-types";
-import { useDebouncedValue } from "@/lib/use-debounced-value";
 import { AddToPlaylistDialog } from "@/components/add-to-playlist-dialog";
+import { AppUserButton } from "@/components/app-user-button";
+import { MobileAppNavSheet } from "@/components/mobile-app-nav-sheet";
 import { MovieDetailDialog } from "@/components/movie-detail-dialog";
-import { SearchSuggestDropdown } from "@/components/search-suggest-dropdown";
 import {
   fetchUserReleaseWatchlist,
   RELEASE_WATCHLIST_CHANGED_EVENT,
@@ -142,7 +131,7 @@ function GenrePill({
 export function MoviefyApp() {
   const pathname = usePathname();
   const router = useRouter();
-  const { client, session, ready, authError } = useSupabaseApp();
+  const { client, appUser, ready, authError } = useSupabaseApp();
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [activeId, setActiveId] = useState("");
   const [genreFilter, setGenreFilter] = useState<Genre | "all">("all");
@@ -163,14 +152,6 @@ export function MoviefyApp() {
   >([]);
   const [pickListOpen, setPickListOpen] = useState(false);
   const [pickListMovie, setPickListMovie] = useState<Movie | null>(null);
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [searchQ, setSearchQ] = useState("");
-  const debouncedSearchQ = useDebouncedValue(searchQ, 300);
-  const [suggestData, setSuggestData] = useState<SearchSuggestResponse | null>(
-    null,
-  );
-  const [suggestLoading, setSuggestLoading] = useState(false);
-  const searchDialogWrapRef = useRef<HTMLDivElement>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [libraryKindFilter, setLibraryKindFilter] =
     useState<LibraryKindFilter>("all");
@@ -183,10 +164,10 @@ export function MoviefyApp() {
   const [deletePlaylistOpen, setDeletePlaylistOpen] = useState(false);
 
   const loadLibrary = useCallback(async () => {
-    if (!client || !session?.user) return;
+    if (!client || !appUser) return;
     setLibraryLoading(true);
     try {
-      const uid = session.user.id;
+      const uid = appUser.id;
       const [pl, saved, name, savedList, coming] = await Promise.all([
         fetchUserPlaylists(client, uid),
         fetchSavedMovieKeys(client, uid),
@@ -212,12 +193,12 @@ export function MoviefyApp() {
     } finally {
       setLibraryLoading(false);
     }
-  }, [client, session?.user]);
+  }, [client, appUser]);
 
   useEffect(() => {
-    if (!ready || !client || !session?.user) return;
+    if (!ready || !client || !appUser) return;
     void loadLibrary();
-  }, [ready, client, session?.user?.id, loadLibrary]);
+  }, [ready, client, appUser?.id, loadLibrary]);
 
   useEffect(() => {
     const on = () => {
@@ -234,7 +215,7 @@ export function MoviefyApp() {
       .then((r) => r.json())
       .then((d: TmdbDiscoverResponse) => {
         const rows = d.results ?? [];
-        setPickPool(rows.slice(0, 40).map(movieFromTmdbDiscoverItem));
+        setPickPool(rows.slice(0, 40).map((row) => movieFromTmdbDiscoverItem(row)));
       })
       .catch(() => setPickPool([]));
     return () => ctrl.abort();
@@ -260,10 +241,10 @@ export function MoviefyApp() {
   const signInNextPath = pathname || "/app";
 
   const toggleDetailWatched = useCallback(async () => {
-    if (!client || !session?.user || !selectedMovie) return;
+    if (!client || !appUser || !selectedMovie) return;
     setWatchedDialogBusy(true);
     try {
-      const pl = await getOrCreatePrimaryWatchedPlaylist(client, session.user.id);
+      const pl = await getOrCreatePrimaryWatchedPlaylist(client, appUser.id);
       if (!pl) {
         pushToast("Could not open Watched list");
         return;
@@ -281,7 +262,7 @@ export function MoviefyApp() {
     } finally {
       setWatchedDialogBusy(false);
     }
-  }, [client, session?.user, selectedMovie, selectedInWatched, loadLibrary]);
+  }, [client, appUser, selectedMovie, selectedInWatched, loadLibrary]);
 
   async function openComingRow(row: ReleaseWatchlistRow) {
     const item = releaseWatchlistRowToScheduleItem(row);
@@ -297,10 +278,10 @@ export function MoviefyApp() {
   }
 
   async function removeComingRow(row: ReleaseWatchlistRow) {
-    if (!client || !session?.user) return;
+    if (!client || !appUser) return;
     const ok = await removeUserReleaseWatchlist(
       client,
-      session.user.id,
+      appUser.id,
       row.tmdbId,
       row.mediaType,
     );
@@ -388,7 +369,7 @@ export function MoviefyApp() {
     );
   }, [playlists, libraryQuery, libraryKindFilter]);
 
-  /** Titles in your lists + saved — Home search stays in your library only (no TMDB pool). */
+  /** Titles in your lists + saved (e.g. recents / local hints). */
   const allKnownMovies = useMemo(() => {
     const m = new Map<string, Movie>();
     for (const p of playlists) {
@@ -420,59 +401,6 @@ export function MoviefyApp() {
     return pickPool.filter((m) => !inList.has(m.id));
   }, [active, pickPool]);
 
-  const searchResults = useMemo(() => {
-    const q = searchQ.trim().toLowerCase();
-    const pool = [...allKnownMovies.values()];
-    if (!q) {
-      return {
-        movies: pool.slice(0, 8),
-        lists: playlists.slice(0, 6),
-      };
-    }
-    return {
-      movies: pool
-        .filter(
-          (m) =>
-            m.title.toLowerCase().includes(q) ||
-            m.director.toLowerCase().includes(q) ||
-            m.genre.toLowerCase().includes(q),
-        )
-        .slice(0, 12),
-      lists: playlists.filter((p) => p.name.toLowerCase().includes(q)).slice(0, 8),
-    };
-  }, [searchQ, playlists, allKnownMovies]);
-
-  useEffect(() => {
-    if (!searchOpen) {
-      setSuggestData(null);
-      setSuggestLoading(false);
-      return;
-    }
-    const q = debouncedSearchQ.trim();
-    if (!q) {
-      setSuggestData(null);
-      setSuggestLoading(false);
-      return;
-    }
-    const ctrl = new AbortController();
-    setSuggestLoading(true);
-    setSuggestData(null);
-    void fetch(`/api/search/suggest?q=${encodeURIComponent(q)}`, {
-      signal: ctrl.signal,
-    })
-      .then((r) => r.json() as Promise<SearchSuggestResponse>)
-      .then((d) => {
-        if (!ctrl.signal.aborted) setSuggestData(d);
-      })
-      .catch(() => {
-        if (!ctrl.signal.aborted) setSuggestData(null);
-      })
-      .finally(() => {
-        if (!ctrl.signal.aborted) setSuggestLoading(false);
-      });
-    return () => ctrl.abort();
-  }, [debouncedSearchQ, searchOpen]);
-
   const inActiveList = useMemo(() => {
     if (!selectedMovie) return false;
     return playlists.some((p) =>
@@ -486,24 +414,13 @@ export function MoviefyApp() {
     return () => window.clearTimeout(t);
   }, [toast]);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        setSearchOpen(true);
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
-
   function pushToast(message: string) {
     setToast(message);
   }
 
   async function createPlaylist() {
-    if (!client || !session?.user) return;
-    const pl = await createPlaylistDb(client, session.user.id, {
+    if (!client || !appUser) return;
+    const pl = await createPlaylistDb(client, appUser.id, {
       name: newName.trim() || "Untitled playlist",
       description: newDesc.trim() || "No description yet.",
       kind: newKind,
@@ -579,8 +496,8 @@ export function MoviefyApp() {
   }
 
   async function duplicateActivePlaylist() {
-    if (!client || !session?.user || !active) return;
-    const copy = await duplicatePlaylistDb(client, session.user.id, active);
+    if (!client || !appUser || !active) return;
+    const copy = await duplicatePlaylistDb(client, appUser.id, active);
     if (!copy) {
       pushToast("Could not duplicate list");
       return;
@@ -591,8 +508,8 @@ export function MoviefyApp() {
   }
 
   async function deleteActivePlaylist() {
-    if (!client || !session?.user || !active) return;
-    const ok = await deletePlaylistDb(client, session.user.id, active.id);
+    if (!client || !appUser || !active) return;
+    const ok = await deletePlaylistDb(client, appUser.id, active.id);
     if (!ok) {
       pushToast("Could not delete playlist");
       return;
@@ -645,10 +562,13 @@ export function MoviefyApp() {
     );
   }
 
-  if (!ready || !session || libraryLoading) {
+  if (!ready || !appUser || libraryLoading) {
     return (
-      <div className="flex min-h-dvh items-center justify-center bg-black/35 text-white backdrop-blur-md">
-        <Loader2 className="size-9 animate-spin text-primary" aria-hidden />
+      <div className="flex min-h-dvh items-center justify-center bg-black/35 px-6 text-white backdrop-blur-md">
+        <MoviefyBrandLoader
+          size="lg"
+          label="Opening your theatre — playlists and saved films are almost ready."
+        />
       </div>
     );
   }
@@ -786,7 +706,7 @@ export function MoviefyApp() {
               <Input
                 value={libraryQuery}
                 onChange={(e) => setLibraryQuery(e.target.value)}
-                placeholder="Search library & open ⌘K for everything…"
+                placeholder="Filter playlists in the sidebar…"
                 className="border-0 bg-[#212121] pl-8"
               />
             </div>
@@ -834,143 +754,79 @@ export function MoviefyApp() {
         </aside>
 
         <main className="min-w-0 flex-1 rounded-xl bg-card">
-          <header className="sticky top-0 z-10 flex flex-nowrap items-center gap-2 overflow-x-auto overscroll-x-contain rounded-t-xl border-b border-border/50 bg-card/95 px-2 py-2.5 backdrop-blur [-ms-overflow-style:none] [scrollbar-width:none] sm:flex-wrap sm:overflow-visible sm:gap-3 sm:px-4 sm:py-3 [&::-webkit-scrollbar]:hidden">
-            <button
-              type="button"
-              onClick={() => setSearchOpen(true)}
-              className="relative order-1 flex min-h-11 min-w-0 flex-1 basis-[min(100%,18rem)] items-center gap-2 rounded-lg border border-border/50 bg-muted/40 py-2 pl-9 pr-3 text-left text-sm text-muted-foreground transition hover:border-border hover:bg-muted/55 sm:max-w-xl"
-            >
-              <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <span className="truncate">Search movies, people, genres & library…</span>
-              <span className="ml-auto hidden shrink-0 items-center gap-0.5 rounded border border-border/60 bg-background/40 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground sm:inline-flex">
-                <Keyboard className="size-3" />
-                K
-              </span>
-            </button>
-            <div className="order-2 flex min-w-0 flex-1 items-center justify-between gap-2 sm:order-3">
-              <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto sm:gap-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                <Link
-                  href="/app"
-                  aria-label="Your theatre"
-                  className={cn(
-                    buttonVariants({ variant: "secondary", size: "sm" }),
-                    "shrink-0 gap-1.5 border-0 bg-muted/50 text-foreground hover:bg-muted/70 lg:hidden",
-                    libraryNav === "playlists" && "ring-1 ring-border/80",
-                  )}
-                  onClick={() => setLibraryNav("playlists")}
-                >
-                  <Home className="size-4" />
-                  <span className="hidden sm:inline">Your theatre</span>
-                </Link>
-                <button
-                  type="button"
-                  aria-label="Saved movies"
-                  className={cn(
-                    buttonVariants({ variant: "secondary", size: "sm" }),
-                    "shrink-0 gap-1.5 border-0 bg-muted/50 text-foreground hover:bg-muted/70 lg:hidden",
-                    libraryNav === "saved" && "ring-1 ring-primary/50",
-                  )}
-                  onClick={() => {
-                    setLibraryNav("saved");
-                    void loadLibrary();
-                  }}
-                >
-                  <Heart className="size-4" />
-                  <span className="hidden sm:inline">Saved</span>
-                </button>
-                <button
-                  type="button"
-                  aria-label="Coming up from Release radar"
-                  className={cn(
-                    buttonVariants({ variant: "secondary", size: "sm" }),
-                    "shrink-0 gap-1.5 border-0 bg-muted/50 text-foreground hover:bg-muted/70 lg:hidden",
-                    libraryNav === "coming" && "ring-1 ring-violet-400/50",
-                  )}
-                  onClick={() => {
-                    setLibraryNav("coming");
-                    void loadLibrary();
-                  }}
-                >
-                  <Bookmark className="size-4" />
-                  <span className="hidden sm:inline">Coming</span>
-                </button>
-                <Link
-                  href="/app/explore"
-                  className={cn(
-                    buttonVariants({ variant: "secondary", size: "sm" }),
-                    "shrink-0 gap-1.5 border-0 bg-muted/50 text-foreground hover:bg-muted/70 lg:hidden",
-                  )}
-                >
-                  <Compass className="size-4" />
-                  Explore
-                </Link>
-                <Link
-                  href="/app/releases"
-                  className={cn(
-                    buttonVariants({ variant: "secondary", size: "sm" }),
-                    "shrink-0 gap-1.5 border-0 bg-muted/50 text-foreground hover:bg-muted/70 lg:hidden",
-                  )}
-                >
-                  <CalendarDays className="size-4" />
-                  <span className="hidden sm:inline">Radar</span>
-                </Link>
-                <Link
-                  href="/app/reels"
-                  className={cn(
-                    buttonVariants({ variant: "secondary", size: "sm" }),
-                    "shrink-0 gap-1.5 border-0 bg-muted/50 text-foreground hover:bg-muted/70 lg:hidden",
-                  )}
-                >
-                  <Film className="size-4" />
-                  <span className="hidden sm:inline">Reels</span>
-                </Link>
-              </div>
+          <header className="sticky top-0 z-10 flex w-full min-w-0 items-center gap-2 rounded-t-xl border-b border-border/50 bg-card/95 px-2 py-2.5 backdrop-blur sm:gap-3 sm:px-4 sm:py-3">
+            <div className="flex shrink-0 items-center lg:hidden">
+              <MobileAppNavSheet
+                theatreLibrary={{
+                  active: libraryNav,
+                  onSelect: (nav) => {
+                    setLibraryNav(nav);
+                    if (nav === "saved" || nav === "coming") void loadLibrary();
+                  },
+                }}
+              />
+            </div>
+            <div className="flex min-w-0 flex-1 items-center justify-center gap-1 sm:gap-1.5 lg:hidden">
+              <Link
+                href="/app/explore"
+                aria-label="Explore"
+                title="Explore"
+                className={cn(
+                  buttonVariants({ variant: "secondary", size: "icon" }),
+                  "size-10 shrink-0 border-0 bg-muted/50 text-foreground hover:bg-muted/70",
+                )}
+              >
+                <Compass className="size-4" aria-hidden />
+              </Link>
+              <Link
+                href="/app/releases"
+                aria-label="Release radar"
+                title="Release radar"
+                className={cn(
+                  buttonVariants({ variant: "secondary", size: "icon" }),
+                  "size-10 shrink-0 border-0 bg-muted/50 text-foreground hover:bg-muted/70",
+                )}
+              >
+                <CalendarDays className="size-4" aria-hidden />
+              </Link>
+              <Link
+                href="/app/reels"
+                aria-label="Meme reels"
+                title="Meme reels"
+                className={cn(
+                  buttonVariants({ variant: "secondary", size: "icon" }),
+                  "size-10 shrink-0 border-0 bg-muted/50 text-foreground hover:bg-muted/70",
+                )}
+              >
+                <Film className="size-4" aria-hidden />
+              </Link>
+            </div>
+            <div className="hidden min-w-0 flex-1 items-center justify-end gap-2 lg:flex">
+              <Link
+                href="/app/explore"
+                className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-md border border-transparent px-2.5 py-2 text-sm text-muted-foreground transition hover:bg-muted/40 hover:text-foreground"
+              >
+                <Compass className="size-4 shrink-0" aria-hidden />
+                Explore
+              </Link>
+              <Link
+                href="/app/releases"
+                className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-md border border-transparent px-2.5 py-2 text-sm text-muted-foreground transition hover:bg-muted/40 hover:text-foreground"
+              >
+                <CalendarDays className="size-4 shrink-0" aria-hidden />
+                Release radar
+              </Link>
+              <Link
+                href="/app/reels"
+                className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-md border border-transparent px-2.5 py-2 text-sm text-muted-foreground transition hover:bg-muted/40 hover:text-foreground"
+              >
+                <Film className="size-4 shrink-0" aria-hidden />
+                Meme reels
+              </Link>
+            </div>
+            <div className="ml-auto flex shrink-0 items-center">
               <div className="shrink-0">
-                <DropdownMenu>
-                  <DropdownMenuTrigger
-                    aria-label="Account menu"
-                    className={cn(
-                      buttonVariants({ variant: "ghost", size: "icon-sm" }),
-                      "rounded-full text-foreground hover:bg-muted/50",
-                    )}
-                  >
-                    <Avatar size="sm">
-                      <AvatarFallback>
-                        {avatarLetter(displayName, session)}
-                      </AvatarFallback>
-                    </Avatar>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent
-                    align="end"
-                    sideOffset={8}
-                    className="min-w-48 border-border/60 bg-popover text-popover-foreground"
-                  >
-                    <DropdownMenuLabel className="text-muted-foreground">
-                      Account
-                    </DropdownMenuLabel>
-                    <DropdownMenuItem
-                      disabled
-                      className="text-muted-foreground focus:bg-muted/50 focus:text-foreground"
-                    >
-                      <Settings className="size-4 opacity-60" />
-                      Settings
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator className="bg-border/60" />
-                    <DropdownMenuItem
-                      variant="destructive"
-                      className="focus:bg-red-950/50"
-                      onClick={() => {
-                        void client?.auth.signOut().then(() => {
-                          router.push("/?auth=sign-in");
-                          router.refresh();
-                        });
-                      }}
-                    >
-                      <LogOut className="size-4" />
-                      Sign out
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                <AppUserButton />
               </div>
             </div>
           </header>
@@ -1130,7 +986,7 @@ export function MoviefyApp() {
                   Welcome back
                 </p>
                 <h1 className="type-hero mt-1">
-                  {greetingFirstName(displayName, session)}
+                  {greetingFirstName(displayName, appUser)}
                 </h1>
                 <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground">
                   This space is your playlists, saved films, and coming-up bookmarks. Trending,
@@ -1493,10 +1349,10 @@ export function MoviefyApp() {
         open={detailOpen}
         onOpenChange={setDetailOpen}
         supabase={client}
-        userId={session?.user?.id ?? null}
+        userId={appUser?.id ?? null}
         viewerDisplayName={
           displayName?.trim() ||
-          session?.user?.email?.split("@")[0] ||
+          appUser?.email?.split("@")[0] ||
           null
         }
         inActiveList={inActiveList}
@@ -1508,14 +1364,14 @@ export function MoviefyApp() {
             : false
         }
         onToggleSave={async () => {
-          if (!client || !session?.user || !selectedMovie) return;
+          if (!client || !appUser || !selectedMovie) return;
           const was =
             savedIds.has(selectedMovie.id) ||
             (selectedMovie.tmdbId != null &&
               savedIds.has(`tmdb-${selectedMovie.tmdbId}`));
           const ok = await setMovieSavedDb(
             client,
-            session.user.id,
+            appUser.id,
             selectedMovie,
             !was,
           );
@@ -1524,8 +1380,8 @@ export function MoviefyApp() {
             return;
           }
           const [keys, list] = await Promise.all([
-            fetchSavedMovieKeys(client, session.user.id),
-            fetchSavedMoviesForUser(client, session.user.id),
+            fetchSavedMovieKeys(client, appUser.id),
+            fetchSavedMoviesForUser(client, appUser.id),
           ]);
           setSavedIds(keys);
           setSavedMovies(list);
@@ -1537,7 +1393,7 @@ export function MoviefyApp() {
           setPickListOpen(true);
         }}
         watched={selectedInWatched}
-        onToggleWatched={session?.user ? toggleDetailWatched : undefined}
+        onToggleWatched={appUser ? toggleDetailWatched : undefined}
         watchedBusy={watchedDialogBusy}
       />
 
@@ -1549,7 +1405,7 @@ export function MoviefyApp() {
         }}
         movie={pickListMovie}
         client={client}
-        userId={session?.user?.id ?? null}
+        userId={appUser?.id ?? null}
         onNotify={pushToast}
         onUpdated={async () => {
           await loadLibrary();
@@ -1567,113 +1423,6 @@ export function MoviefyApp() {
           {toast}
         </div>
       )}
-
-      <Dialog
-        open={searchOpen}
-        onOpenChange={(o) => {
-          setSearchOpen(o);
-          if (!o) {
-            setSearchQ("");
-            setSuggestData(null);
-          }
-        }}
-      >
-        <DialogContent className="overflow-visible border-white/10 bg-[#1a1a1a] text-white sm:max-w-xl">
-          <DialogHeader>
-            <DialogTitle>Search everything</DialogTitle>
-            <DialogDescription>
-              Movies and actors from TMDB, genre shortcuts, your saved titles and
-              playlists — then Explore for full discovery. Shortcut: ⌘K / Ctrl+K
-            </DialogDescription>
-          </DialogHeader>
-          <div ref={searchDialogWrapRef} className="relative z-10 overflow-visible">
-            <Input
-              autoFocus
-              value={searchQ}
-              onChange={(e) => setSearchQ(e.target.value)}
-              placeholder="Try a title, actor, genre, or playlist…"
-              className="border-white/10 bg-[#252525] pr-10"
-              aria-autocomplete="list"
-              aria-expanded={Boolean(searchQ.trim())}
-            />
-            {searchQ.trim() ? (
-              <button
-                type="button"
-                aria-label="Clear search"
-                className="absolute right-2 top-1/2 z-[1] -translate-y-1/2 rounded-md p-1 text-muted-foreground hover:bg-white/10 hover:text-white"
-                onClick={() => {
-                  setSearchQ("");
-                  setSuggestData(null);
-                }}
-              >
-                <X className="size-4" />
-              </button>
-            ) : null}
-            <p className="mt-2 text-xs text-muted-foreground">
-              Suggestions update as you type. Top pick first, then your library, TMDB
-              matches, and genres.
-            </p>
-            <div className="relative mt-2 min-h-[11rem] overflow-visible pb-1">
-              <SearchSuggestDropdown
-                open={Boolean(searchQ.trim())}
-                variant="library"
-                query={searchQ}
-                loading={suggestLoading}
-                data={suggestData}
-                libraryMovieHits={searchResults.movies.map((m) => ({
-                  key: m.id,
-                  title: m.title,
-                  subtitle: `${m.year} · ${m.genre} · Your library`,
-                  posterImage: m.posterImage,
-                  posterClass: m.posterClass,
-                  onPick: () => {
-                    selectMovie(m);
-                    setSearchOpen(false);
-                    setSearchQ("");
-                    setSuggestData(null);
-                  },
-                }))}
-                playlistHits={searchResults.lists.map((p) => ({
-                  id: p.id,
-                  name: p.name,
-                  hint: `${p.movies.length} titles`,
-                  onPick: () => {
-                    setLibraryNav("playlists");
-                    setActiveId(p.id);
-                    setGenreFilter("all");
-                    setSearchOpen(false);
-                    setSearchQ("");
-                    setSuggestData(null);
-                    pushToast(`Opened “${p.name}”`);
-                  },
-                }))}
-                onPickMovie={(row: SearchSuggestMovieRow) => {
-                  const item = discoverItemFromSuggestMovie(row);
-                  selectMovie(movieFromTmdbDiscoverItem(item));
-                  setSearchOpen(false);
-                  setSearchQ("");
-                  setSuggestData(null);
-                }}
-                onPickPerson={(id, name) => {
-                  setSearchOpen(false);
-                  setSearchQ("");
-                  setSuggestData(null);
-                  router.push(
-                    `/app/explore?personId=${id}&personName=${encodeURIComponent(name)}`,
-                  );
-                }}
-                onPickGenre={(g) => {
-                  setSearchOpen(false);
-                  setSearchQ("");
-                  setSuggestData(null);
-                  router.push(`/app/explore?genre=${encodeURIComponent(g)}`);
-                }}
-                onPickPlaylist={(hit) => hit.onPick()}
-              />
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={newPlaylistOpen} onOpenChange={setNewPlaylistOpen}>
         <DialogContent className="border-border/80 bg-[#1e1e1e] text-white">

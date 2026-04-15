@@ -14,10 +14,10 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
-import { Loader2 } from "lucide-react";
+import { MoviefyBrandLoader } from "@/components/moviefy-brand-loader";
 
 const SORT_OPTIONS = [
-  { value: "vote_average.desc", label: "Highest rated (TMDB)" },
+  { value: "vote_average.desc", label: "Highest rated" },
   { value: "popularity.desc", label: "Most popular" },
   { value: "primary_release_date.desc", label: "Newest releases" },
 ] as const;
@@ -122,13 +122,17 @@ export function TmdbDiscoverSection({
       </div>
 
       {loading ? (
-        <div className="flex items-center gap-2 py-12 text-sm text-muted-foreground">
-          <Loader2 className="size-4 animate-spin" />
-          Loading picks…
+        <div className="py-10">
+          <MoviefyBrandLoader
+            size="md"
+            label="Finding standout picks for this shelf…"
+            className="text-white/60 [&_p]:text-white/50"
+          />
         </div>
       ) : !data?.configured ? (
         <div className="rounded-lg border border-white/10 bg-[#1f1f1f] px-4 py-6 text-sm text-muted-foreground">
-          {data?.warning ?? "Add TMDB_API_KEY to your environment to load this rail."}
+          {data?.warning ??
+            "Discovery isn’t available on this server right now — check back after it’s configured."}
         </div>
       ) : (
         <>

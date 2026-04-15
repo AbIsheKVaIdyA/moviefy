@@ -78,7 +78,7 @@ export function ExploreTop10Sidebar({
         </div>
       ) : top.length === 0 ? (
         <p className="py-8 text-center text-xs text-muted-foreground">
-          Add TMDB_API_KEY to load the chart.
+          Trending chart isn&apos;t available on this server yet.
         </p>
       ) : (
         <ol className="max-h-[min(70vh,52rem)] space-y-2.5 overflow-y-auto pr-1 [-ms-overflow-style:none] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border/80">

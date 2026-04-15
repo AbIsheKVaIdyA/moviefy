@@ -7,27 +7,18 @@ import {
   ArrowLeft,
   Bookmark,
   CalendarDays,
-  Clapperboard,
+  Compass,
   Film,
   Flame,
-  LogOut,
-  Settings,
   Languages,
-  Loader2,
   Megaphone,
   Sparkles,
 } from "lucide-react";
+import { AppUserButton } from "@/components/app-user-button";
+import { MobileAppNavSheet } from "@/components/mobile-app-nav-sheet";
+import { MoviefyBrandLoaderRow } from "@/components/moviefy-brand-loader";
 import { PosterImage } from "@/components/poster-image";
-import { Button, buttonVariants } from "@/components/ui/button";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -37,7 +28,6 @@ import {
 } from "@/components/ui/select";
 import { GENRES, type Genre } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { avatarLetter } from "@/lib/display-name";
 import { tmdbPosterUrl } from "@/lib/tmdb-image";
 import { movieToDetailPageHref } from "@/lib/movie-detail-nav";
 import { prefetchMovieEnrich } from "@/lib/movie-enrich-prefetch";
@@ -102,7 +92,7 @@ function groupByDate(items: ScheduleItem[]): Map<string, ScheduleItem[]> {
 
 export function ReleasesPage() {
   const router = useRouter();
-  const { client, session } = useSupabaseApp();
+  const { client, appUser } = useSupabaseApp();
   const [windowKey, setWindowKey] = useState<ScheduleWindow>("today");
   const [typeFilter, setTypeFilter] = useState<"all" | ScheduleMedia>("all");
   const [genreFilter, setGenreFilter] = useState<"all" | Genre>("all");
@@ -119,12 +109,12 @@ export function ReleasesPage() {
   }, [toastMsg]);
 
   useEffect(() => {
-    if (!client || !session?.user) {
+    if (!client || !appUser) {
       setTrackedIds(new Set());
       return;
     }
     let cancelled = false;
-    void fetchUserReleaseWatchlist(client, session.user.id).then((rows) => {
+    void fetchUserReleaseWatchlist(client, appUser.id).then((rows) => {
       if (cancelled) return;
       setTrackedIds(
         new Set(rows.map((r) => `${r.mediaType}-${r.tmdbId}`)),
@@ -133,7 +123,7 @@ export function ReleasesPage() {
     return () => {
       cancelled = true;
     };
-  }, [client, session?.user?.id]);
+  }, [client, appUser?.id]);
 
   const load = useCallback(() => {
     let cancelled = false;
@@ -186,12 +176,12 @@ export function ReleasesPage() {
   }
 
   async function toggleReleaseWatch(item: ScheduleItem) {
-    if (!client || !session?.user) {
+    if (!client || !appUser) {
       setToastMsg("Sign in to save titles for your theatre.");
       return;
     }
     const key = watchlistKey(item);
-    const uid = session.user.id;
+    const uid = appUser.id;
     if (trackedIds.has(key)) {
       const ok = await removeUserReleaseWatchlist(
         client,
@@ -225,15 +215,17 @@ export function ReleasesPage() {
     <div className="min-h-dvh text-foreground">
       <header className="sticky top-0 z-30 border-b border-border/60 bg-card/45 pt-[env(safe-area-inset-top,0px)] backdrop-blur-xl supports-[backdrop-filter]:bg-card/35">
         <div className="mx-auto flex max-w-[1400px] items-center justify-between gap-3 px-3 py-3 sm:px-5">
-          <div className="flex items-center gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
+            <MobileAppNavSheet />
             <Link
               href="/app"
-              className="flex min-h-10 items-center gap-2 rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-sm text-foreground/90 transition hover:bg-muted/50"
+              aria-label="Your theatre"
+              className="hidden min-h-10 shrink-0 items-center gap-2 rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-sm text-foreground/90 transition hover:bg-muted/50 lg:flex"
             >
-              <ArrowLeft className="size-4" />
-              <span className="hidden sm:inline">Your theatre</span>
+              <ArrowLeft className="size-4 shrink-0" />
+              <span>Your theatre</span>
             </Link>
-            <div className="flex items-center gap-2">
+            <div className="flex min-w-0 items-center gap-2">
               <div className="flex size-9 items-center justify-center rounded-lg bg-violet-500/20 text-violet-300">
                 <CalendarDays className="size-4" />
               </div>
@@ -241,78 +233,31 @@ export function ReleasesPage() {
                 <p className="font-heading text-sm font-semibold text-foreground">
                   Release radar
                 </p>
-                <p className="text-[10px] text-muted-foreground">
-                  Use{" "}
-                  <span className="font-medium text-foreground/90">Save to Coming up</span>{" "}
-                  under each poster — lists sync to Your theatre (sign in).
-                </p>
               </div>
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-            <Link
-              href="/app/explore"
-              aria-label="Explore"
-              title="Explore"
-              className="inline-flex min-h-10 items-center gap-2 rounded-md px-2 text-sm text-muted-foreground transition hover:bg-muted/40 hover:text-foreground sm:px-0"
-            >
-              <Clapperboard className="size-4 shrink-0" />
-              <span className="hidden sm:inline">Explore</span>
-            </Link>
-            <Link
-              href="/app/reels"
-              aria-label="Meme reels"
-              title="Meme reels"
-              className="inline-flex min-h-10 items-center gap-1.5 rounded-md px-2 text-sm text-muted-foreground transition hover:bg-muted/40 hover:text-foreground sm:px-0"
-            >
-              <Film className="size-4 shrink-0" />
-              <span className="hidden sm:inline">Meme reels</span>
-            </Link>
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                aria-label="Account menu"
-                className={cn(
-                  buttonVariants({ variant: "ghost", size: "icon-sm" }),
-                  "rounded-full text-foreground hover:bg-muted/50",
-                )}
+            <div className="hidden items-center gap-1.5 lg:flex">
+              <Link
+                href="/app/explore"
+                aria-label="Explore"
+                title="Explore"
+                className="inline-flex min-h-10 items-center gap-2 rounded-md px-2 text-sm text-muted-foreground transition hover:bg-muted/40 hover:text-foreground"
               >
-                <Avatar size="sm">
-                  <AvatarFallback>
-                    {avatarLetter(null, session)}
-                  </AvatarFallback>
-                </Avatar>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                align="end"
-                sideOffset={8}
-                className="min-w-48 border-border/60 bg-popover text-popover-foreground"
+                <Compass className="size-4 shrink-0" />
+                Explore
+              </Link>
+              <Link
+                href="/app/reels"
+                aria-label="Meme reels"
+                title="Meme reels"
+                className="inline-flex min-h-10 items-center gap-1.5 rounded-md px-2 text-sm text-muted-foreground transition hover:bg-muted/40 hover:text-foreground"
               >
-                <DropdownMenuLabel className="text-muted-foreground">
-                  Account
-                </DropdownMenuLabel>
-                <DropdownMenuItem
-                  disabled
-                  className="text-muted-foreground focus:bg-muted/50 focus:text-foreground"
-                >
-                  <Settings className="size-4 opacity-60" />
-                  Settings
-                </DropdownMenuItem>
-                <DropdownMenuSeparator className="bg-border/60" />
-                <DropdownMenuItem
-                  variant="destructive"
-                  className="focus:bg-red-950/50"
-                  onClick={() => {
-                    void client?.auth.signOut().then(() => {
-                      router.push("/?auth=sign-in");
-                      router.refresh();
-                    });
-                  }}
-                >
-                  <LogOut className="size-4" />
-                  Sign out
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+                <Film className="size-4 shrink-0" />
+                Meme reels
+              </Link>
+            </div>
+            <AppUserButton />
           </div>
         </div>
       </header>
@@ -436,13 +381,18 @@ export function ReleasesPage() {
           </div>
 
           {loading ? (
-            <div className="flex items-center gap-2 py-16 text-sm text-muted-foreground">
-              <Loader2 className="size-5 animate-spin" />
-              Loading release calendar…
+            <div className="py-14">
+              <MoviefyBrandLoaderRow
+                size="md"
+                className="border-border/50 bg-muted/25"
+                labelClassName="text-muted-foreground"
+                label="Building your release calendar — dates and posters are on the way."
+              />
             </div>
           ) : !data?.configured ? (
             <p className="rounded-2xl border border-border/60 bg-card/80 px-4 py-10 text-center text-sm text-muted-foreground">
-              {data?.warning ?? "Add TMDB_API_KEY to load releases."}
+              {data?.warning ??
+                "Release radar isn’t available on this server yet — check back once it’s configured."}
             </p>
           ) : data.warning && !data.items.length ? (
             <p className="text-sm text-muted-foreground">{data.warning}</p>

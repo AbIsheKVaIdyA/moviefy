@@ -1,7 +1,5 @@
 import { PosterImage } from "@/components/poster-image";
-import { LandingAuthModal } from "@/components/landing-auth-modal";
 import Link from "next/link";
-import { Suspense } from "react";
 import {
   ArrowRight,
   Clapperboard,
@@ -20,6 +18,10 @@ import {
 } from "@/lib/landing-movies";
 import type { Movie } from "@/lib/types";
 import { cn } from "@/lib/utils";
+
+const LANDING_NEXT = "/app/explore";
+const landingSignInHref = `/sign-in?redirect_url=${encodeURIComponent(LANDING_NEXT)}`;
+const landingSignUpHref = `/sign-up?redirect_url=${encodeURIComponent(LANDING_NEXT)}`;
 
 function PosterTile({
   movie,
@@ -102,22 +104,25 @@ export default async function Home() {
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">
             <Link
-              href="/?auth=sign-in&next=%2Fapp%2Fexplore"
+              href={landingSignInHref}
               className={cn(
                 buttonVariants({ variant: "ghost", size: "sm" }),
-                "hidden gap-1.5 text-zinc-300 sm:inline-flex",
+                "hidden min-h-10 gap-1.5 text-zinc-300 sm:inline-flex",
               )}
             >
               <Compass className="size-4" />
               Explore
             </Link>
             <Link
-              href="/?auth=sign-in&next=%2Fapp%2Fexplore"
-              className={cn(buttonVariants({ variant: "ghost", size: "sm" }))}
+              href={landingSignInHref}
+              className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "min-h-10")}
             >
               Sign in
             </Link>
-            <Link href="/?auth=sign-up&next=%2Fapp%2Fexplore" className={cn(buttonVariants({ size: "sm" }))}>
+            <Link
+              href={landingSignUpHref}
+              className={cn(buttonVariants({ size: "sm" }), "min-h-10")}
+            >
               Sign up
               <ArrowRight className="size-4" />
             </Link>
@@ -162,7 +167,7 @@ export default async function Home() {
               </p>
               <div className="mt-8 flex flex-wrap gap-3">
                 <Link
-                  href="/?auth=sign-in&next=%2Fapp%2Fexplore"
+                  href={landingSignInHref}
                   className={cn(
                     buttonVariants({ size: "lg" }),
                     "h-12 gap-2 px-7 shadow-[0_0_40px_-8px_var(--color-primary)]",
@@ -172,7 +177,7 @@ export default async function Home() {
                   Open Moviefy
                 </Link>
                 <Link
-                  href="/?auth=sign-in&next=%2Fapp%2Fexplore"
+                  href={landingSignInHref}
                   className={cn(buttonVariants({ size: "lg", variant: "outline" }), "h-12 border-white/15 bg-white/5")}
                 >
                   <Compass className="size-4" />
@@ -310,7 +315,7 @@ export default async function Home() {
                 it. Public or private per list.
               </p>
               <Link
-                href="/?auth=sign-up&next=%2Fapp%2Fexplore"
+                href={landingSignUpHref}
                 className={cn(
                   buttonVariants({ variant: "secondary", size: "sm" }),
                   "relative z-10 mt-6 border-0 bg-white/10 text-white hover:bg-white/15",
@@ -328,7 +333,7 @@ export default async function Home() {
                 Live TMDB rails, public creator playlists, follow and save to your library.
               </p>
               <Link
-                href="/?auth=sign-in&next=%2Fapp%2Fexplore"
+                href={landingSignInHref}
                 className="mt-4 inline-flex text-sm font-medium text-primary hover:underline"
               >
                 Open Explore →
@@ -382,7 +387,7 @@ export default async function Home() {
               </p>
             </div>
             <Link
-              href="/?auth=sign-in&next=%2Fapp%2Fexplore"
+              href={landingSignInHref}
               className="hidden shrink-0 text-sm font-medium text-primary hover:underline sm:inline"
             >
               See all in app →
@@ -423,14 +428,14 @@ export default async function Home() {
           </p>
           <div className="relative mt-8 flex flex-wrap justify-center gap-3">
             <Link
-              href="/?auth=sign-in&next=%2Fapp%2Fexplore"
+              href={landingSignInHref}
               className={cn(buttonVariants({ size: "lg" }), "h-12 px-8")}
             >
               Launch Moviefy
               <ArrowRight className="size-4" />
             </Link>
             <Link
-              href="/?auth=sign-in&next=%2Fapp%2Fexplore"
+              href={landingSignInHref}
               className={cn(buttonVariants({ size: "lg", variant: "outline" }), "h-12 border-white/20 bg-black/20")}
             >
               Explore first
@@ -439,9 +444,6 @@ export default async function Home() {
         </section>
       </div>
 
-      <Suspense fallback={null}>
-        <LandingAuthModal />
-      </Suspense>
     </main>
   );
 }

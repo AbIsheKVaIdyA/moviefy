@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Analytics } from "@vercel/analytics/next";
 import { DM_Sans, JetBrains_Mono, Oswald } from "next/font/google";
+import { ClerkAppShell } from "@/components/clerk-app-shell";
 import { SupabaseAppProvider } from "@/components/supabase-app-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
@@ -56,9 +57,11 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body className="app-body-skin app-touch-root flex min-h-dvh flex-col text-foreground">
-        <SupabaseAppProvider>
-          <TooltipProvider>{children}</TooltipProvider>
-        </SupabaseAppProvider>
+        <ClerkAppShell>
+          <SupabaseAppProvider>
+            <TooltipProvider>{children}</TooltipProvider>
+          </SupabaseAppProvider>
+        </ClerkAppShell>
         <Analytics />
       </body>
     </html>

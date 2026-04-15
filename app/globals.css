@@ -159,6 +159,135 @@
   @apply rounded-2xl border border-border/80 bg-card/92 text-card-foreground shadow-[var(--app-shadow-card)];
 }
 
+/* Clerk: Tailwind utilities in `appearance.elements` + auth page contrast (ClerkProvider `cssLayerName`). */
+@layer clerk {
+  .clerk-auth-page [class*="cl-card"] {
+    color: rgb(250 250 250);
+  }
+  .clerk-auth-page [class*="cl-headerTitle"],
+  .clerk-auth-page [class*="cl-formHeaderTitle"] {
+    color: #ffffff !important;
+  }
+  .clerk-auth-page [class*="cl-headerSubtitle"],
+  .clerk-auth-page [class*="cl-formHeaderSubtitle"] {
+    color: rgb(212 212 216) !important;
+  }
+  .clerk-auth-page [class*="cl-socialButtonsBlockButtonText"] {
+    color: #fafafa !important;
+  }
+  .clerk-auth-page [class*="cl-formFieldLabel"] {
+    color: rgb(228 228 231) !important;
+  }
+  .clerk-auth-page [class*="cl-dividerText"] {
+    color: rgb(161 161 170) !important;
+  }
+  .clerk-auth-page [class*="cl-footerActionText"] {
+    color: rgb(161 161 170) !important;
+  }
+  .clerk-auth-page [class*="cl-footerActionLink"] {
+    color: rgb(196 181 253) !important;
+  }
+  .clerk-auth-page [class*="cl-branded"] {
+    color: rgb(161 161 170) !important;
+  }
+
+  /*
+   * UserButton menu (Manage account, Sign out) — often portaled outside `.clerk-auth-page`,
+   * so tokens from the app shell may not read; mirror sign-in card contrast.
+   */
+  [class*="cl-userButtonPopoverCard"] {
+    background-color: rgb(24 24 27) !important;
+    color: rgb(250 250 250) !important;
+    border-color: rgb(63 63 70 / 0.75) !important;
+  }
+  [class*="cl-userButtonPopoverActionButton"] {
+    color: rgb(244 244 245) !important;
+  }
+  [class*="cl-userButtonPopoverActionButton"]:hover {
+    background-color: rgb(39 39 42) !important;
+    color: rgb(255 255 255) !important;
+  }
+  [class*="cl-userPreviewMainIdentifier"] {
+    color: rgb(255 255 255) !important;
+  }
+  [class*="cl-userPreviewSecondaryIdentifier"] {
+    color: rgb(161 161 170) !important;
+  }
+  [class*="cl-userButtonPopoverFooter"] {
+    border-color: rgb(63 63 70 / 0.65) !important;
+    color: rgb(161 161 170) !important;
+  }
+}
+
+@keyframes auth-poster-rail-up {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(-50%);
+  }
+}
+
+@keyframes auth-poster-rail-down {
+  from {
+    transform: translateY(-50%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.animate-auth-poster-rail-up {
+  animation: auth-poster-rail-up 78s linear infinite;
+}
+
+.animate-auth-poster-rail-down {
+  animation: auth-poster-rail-down 92s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-auth-poster-rail-up,
+  .animate-auth-poster-rail-down {
+    animation: none;
+    transform: none;
+  }
+}
+
+/* Clerk auth — mobile-only slow poster drift (see `ClerkAuthMobileBackdrop`). */
+@keyframes auth-mobile-poster-x {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes auth-mobile-poster-x-reverse {
+  from {
+    transform: translateX(-50%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.animate-auth-mobile-poster-x {
+  animation: auth-mobile-poster-x 95s linear infinite;
+}
+
+.animate-auth-mobile-poster-x-reverse {
+  animation: auth-mobile-poster-x-reverse 115s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-auth-mobile-poster-x,
+  .animate-auth-mobile-poster-x-reverse {
+    animation: none;
+    transform: none;
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

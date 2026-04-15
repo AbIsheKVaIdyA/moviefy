@@ -1,5 +1,6 @@
 "use client";
 
+import { useAuth, useUser } from "@clerk/nextjs";
 import {
   createContext,
   useContext,
@@ -7,13 +8,18 @@ import {
   useMemo,
   useState,
 } from "react";
-import type { Session } from "@supabase/supabase-js";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { createClient } from "@supabase/supabase-js";
+import { isClerkConfigured } from "@/lib/clerk/auth-mode";
+import { mapClerkUserToAppUser, type AppUser } from "@/lib/app-user";
 import { createBrowserSupabaseClient } from "@/lib/supabase/browser-client";
+import { getSupabaseBrowserConfig } from "@/lib/supabase/config";
+
+export type { AppUser };
 
 type Ctx = {
   client: SupabaseClient | null;
-  session: Session | null;
+  appUser: AppUser | null;
   ready: boolean;
   authError: string | null;
 };
@@ -28,51 +34,83 @@ export function useSupabaseApp(): Ctx {
   return c;
 }
 
-export function SupabaseAppProvider({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+function AnonSupabaseProvider({ children }: { children: React.ReactNode }) {
   const client = useMemo(() => createBrowserSupabaseClient(), []);
-  const [session, setSession] = useState<Session | null>(null);
+  const value = useMemo(
+    () =>
+      ({
+        client,
+        appUser: null,
+        ready: true,
+        authError: null,
+      }) satisfies Ctx,
+    [client],
+  );
+  return (
+    <SupabaseAppContext.Provider value={value}>
+      {children}
+    </SupabaseAppContext.Provider>
+  );
+}
+
+function ClerkSupabaseProvider({ children }: { children: React.ReactNode }) {
+  const cfg = useMemo(() => getSupabaseBrowserConfig(), []);
+  const { isLoaded, userId, getToken } = useAuth();
+  const { user } = useUser();
+
+  const [client, setClient] = useState<SupabaseClient | null>(null);
   const [ready, setReady] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
 
+  const appUser = useMemo(
+    () => mapClerkUserToAppUser(user ?? undefined),
+    [user],
+  );
+
   useEffect(() => {
-    if (!client) {
+    if (!cfg) {
+      setClient(null);
+      setAuthError(null);
       setReady(true);
       return;
     }
 
-    client.auth
-      .getSession()
-      .then(({ data: { session: s }, error }) => {
-        if (error) {
-          setAuthError(error.message);
-          setSession(null);
-        } else {
-          setSession(s);
-          setAuthError(null);
-        }
-      })
-      .catch((e: unknown) => {
-        setAuthError(e instanceof Error ? e.message : "Auth unavailable");
-        setSession(null);
-      })
-      .finally(() => setReady(true));
+    if (!isLoaded) {
+      return;
+    }
 
-    const {
-      data: { subscription },
-    } = client.auth.onAuthStateChange((_event, s) => {
-      setSession(s);
-      setAuthError(null);
-    });
-    return () => subscription.unsubscribe();
-  }, [client]);
+    let cancelled = false;
+    setReady(false);
+
+    (async () => {
+      try {
+        const token = await getToken({ template: "supabase" }).catch(() => null);
+        if (cancelled) return;
+        const c = createClient(cfg.url, cfg.anonKey, {
+          global: {
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+          },
+        });
+        setClient(c);
+        setAuthError(null);
+      } catch (e) {
+        if (!cancelled) {
+          setAuthError(e instanceof Error ? e.message : "Supabase client error");
+          setClient(null);
+        }
+      } finally {
+        if (!cancelled) setReady(true);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [cfg, isLoaded, userId, getToken]);
 
   const value = useMemo(
-    () => ({ client, session, ready, authError }),
-    [client, session, ready, authError],
+    () => ({ client, appUser, ready, authError }),
+    [client, appUser, ready, authError],
   );
 
   return (
@@ -80,4 +118,15 @@ export function SupabaseAppProvider({
       {children}
     </SupabaseAppContext.Provider>
   );
+}
+
+export function SupabaseAppProvider({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  if (!isClerkConfigured()) {
+    return <AnonSupabaseProvider>{children}</AnonSupabaseProvider>;
+  }
+  return <ClerkSupabaseProvider>{children}</ClerkSupabaseProvider>;
 }

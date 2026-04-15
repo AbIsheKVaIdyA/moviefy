@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Award, Clock, Loader2 } from "lucide-react";
+import { Award, Clock } from "lucide-react";
+import { MoviefyBrandLoader } from "@/components/moviefy-brand-loader";
 import { PosterImage } from "@/components/poster-image";
 import type { TmdbDiscoverItem, TmdbDiscoverResponse } from "@/lib/movie-enrich-types";
 import { movieFromTmdbDiscoverItem } from "@/lib/tmdb-genre-map";
@@ -57,8 +58,11 @@ export function ExploreSpotlightRails({ onSelectMovie }: Props) {
         id="explore-section-spotlights"
         className="scroll-mt-28 rounded-3xl border border-border/50 bg-card/40 px-4 py-12 text-center sm:px-6"
       >
-        <Loader2 className="mx-auto size-6 animate-spin text-muted-foreground" />
-        <p className="mt-2 text-sm text-muted-foreground">Loading spotlight picks…</p>
+        <MoviefyBrandLoader
+          size="md"
+          label="Spotlight rails are warming up — award picks and quick watches on the way."
+          className="[&_p]:text-muted-foreground"
+        />
       </section>
     );
   }
@@ -69,7 +73,8 @@ export function ExploreSpotlightRails({ onSelectMovie }: Props) {
         id="explore-section-spotlights"
         className="scroll-mt-28 rounded-3xl border border-amber-500/20 bg-amber-950/10 px-4 py-8 text-center text-sm text-muted-foreground sm:px-6"
       >
-        Add TMDB_API_KEY to load award highlights and sub-90-minute picks.
+        Spotlight picks aren&apos;t available on this server yet — check back once discovery
+        is enabled.
       </section>
     );
   }

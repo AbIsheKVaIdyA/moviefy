@@ -124,7 +124,7 @@ export function ExploreMovieRail({
           </div>
         ) : !configured ? (
           <p className="py-6 text-center text-sm text-muted-foreground">
-            Add TMDB_API_KEY to load this rail.
+            This shelf isn&apos;t available on this server yet.
           </p>
         ) : slice.length === 0 ? (
           <p className="py-6 text-center text-sm text-muted-foreground">

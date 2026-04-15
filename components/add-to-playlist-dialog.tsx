@@ -161,7 +161,7 @@ export function AddToPlaylistDialog({
             <DialogFooter>
               <Button variant="outline" className="border-white/15" asChild>
                 <Link
-                  href={`/?auth=sign-in&next=${encodeURIComponent(signInNextPath)}`}
+                  href={`/sign-in?redirect_url=${encodeURIComponent(signInNextPath)}`}
                 >
                   Sign in
                 </Link>

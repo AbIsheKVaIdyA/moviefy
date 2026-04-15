@@ -38,7 +38,7 @@ export async function getLandingMovies(): Promise<Movie[]> {
     if (!res.ok) return [];
     const data = (await res.json()) as { results?: TmdbDiscoverItem[] };
     const results = data.results ?? [];
-    const mapped = results.slice(0, 12).map(movieFromTmdbDiscoverItem);
+    const mapped = results.slice(0, 12).map((row) => movieFromTmdbDiscoverItem(row));
     return mapped.length ? mapped : [];
   } catch {
     return [];

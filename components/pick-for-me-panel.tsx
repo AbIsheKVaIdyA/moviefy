@@ -96,7 +96,7 @@ export function PickForMePanel({ onPickMovie }: PickForMePanelProps) {
       else if (!(data.movies?.length)) {
         setHint(
           data.configured === false
-            ? "TMDB is not configured on the server."
+            ? "The film catalogue isn't connected on this server yet."
             : "No titles matched — loosen genres or language.",
         );
       }
@@ -111,7 +111,7 @@ export function PickForMePanel({ onPickMovie }: PickForMePanelProps) {
   return (
     <section
       id="explore-section-pick-for-me"
-      className="relative scroll-mt-28 overflow-hidden rounded-[1.75rem] border border-violet-400/25 bg-gradient-to-br from-violet-950/35 via-background/95 to-fuchsia-950/25 p-5 shadow-[var(--app-shadow-card)] sm:p-7"
+      className="relative scroll-mt-28 rounded-[1.75rem] border border-violet-400/25 bg-gradient-to-br from-violet-950/35 via-background/95 to-fuchsia-950/25 p-5 shadow-[var(--app-shadow-card)] sm:p-7"
     >
       <div
         className="pointer-events-none absolute inset-0 overflow-hidden rounded-[1.75rem] opacity-90"
@@ -131,9 +131,7 @@ export function PickForMePanel({ onPickMovie }: PickForMePanelProps) {
               <div>
                 <h2 className="type-section-title">Pick for me</h2>
                 <p className="type-section-sub mt-0 max-w-xl">
-                  Choose moods, language, and era — we surface five diverse films from TMDB.
-                  Add a short wish in your own words; if the server has a Gemini API key, we map
-                  that text into filters before we search (Gemini).
+                  Five picks from TMDB.
                 </p>
               </div>
             </div>
@@ -146,8 +144,8 @@ export function PickForMePanel({ onPickMovie }: PickForMePanelProps) {
           ) : null}
         </div>
 
-        <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]">
-          <div className="space-y-5">
+        <div className="mt-6 grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]">
+          <div className="min-w-0 space-y-5">
             <div>
               <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                 Genres (optional — tap several for OR mix)
@@ -273,9 +271,7 @@ export function PickForMePanel({ onPickMovie }: PickForMePanelProps) {
                 className="w-full resize-y rounded-xl border border-border/60 bg-background/50 px-3 py-2.5 text-sm text-foreground outline-none transition placeholder:text-muted-foreground/70 focus-visible:border-violet-400/50 focus-visible:ring-2 focus-visible:ring-violet-500/25"
               />
               <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
-                Needs <code className="rounded bg-muted/60 px-1">GEMINI_API_KEY</code> on the
-                server (Google AI Studio) to interpret this line; filters above always apply when
-                set.
+                Dropdowns win over the note when both apply.
               </p>
             </div>
 
@@ -295,7 +291,7 @@ export function PickForMePanel({ onPickMovie }: PickForMePanelProps) {
             </Button>
           </div>
 
-          <div className="rounded-2xl border border-white/10 bg-black/20 p-4 backdrop-blur-sm">
+          <div className="min-w-0 max-w-full rounded-2xl border border-white/10 bg-black/20 p-4 backdrop-blur-sm">
             <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
               Your shortlist
             </p>
@@ -306,7 +302,7 @@ export function PickForMePanel({ onPickMovie }: PickForMePanelProps) {
               </p>
             ) : null}
             {loading ? (
-              <div className="mt-6 flex gap-3 overflow-x-auto pb-1">
+              <div className="mt-6 flex min-w-0 gap-3 overflow-x-auto overflow-y-visible pb-1 [-webkit-overflow-scrolling:touch]">
                 {Array.from({ length: 5 }).map((_, i) => (
                   <div
                     key={i}
@@ -315,7 +311,7 @@ export function PickForMePanel({ onPickMovie }: PickForMePanelProps) {
                 ))}
               </div>
             ) : (
-              <div className="mt-4 flex touch-pan-x gap-3 overflow-x-auto overscroll-x-contain pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              <div className="mt-4 flex min-w-0 touch-pan-x gap-3 overflow-x-auto overflow-y-visible overscroll-x-contain pb-1 [-ms-overflow-style:none] [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 {results.map((m) => (
                   <button
                     key={m.id}

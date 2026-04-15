@@ -1,56 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
-import { Clapperboard, Film, Loader2, Sparkles } from "lucide-react";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Film, Sparkles } from "lucide-react";
+import { MoviefyTeaseMark } from "@/components/moviefy-brand-loader";
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
-import { movieToDetailPageHref } from "@/lib/movie-detail-nav";
 import type { Movie } from "@/lib/types";
-import type { MemeReelApiItem, MemeReelsApiResponse } from "@/lib/meme-reels-types";
 
 export type MemeReelsSectionProps = {
-  onOpenMovie: (movie: Movie) => void;
+  onOpenMovie: (_movie: Movie) => void;
   /** Anchor id for jump links (standalone page uses `reels-page-root`). */
   sectionId?: string;
 };
 
 export function MemeReelsSection({
-  onOpenMovie,
   sectionId = "reels-page-root",
 }: MemeReelsSectionProps) {
-  const [loading, setLoading] = useState(true);
-  const [data, setData] = useState<MemeReelsApiResponse | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    void fetch("/api/explore/meme-reels")
-      .then((r) => r.json() as Promise<MemeReelsApiResponse>)
-      .then((d) => {
-        if (!cancelled) setData(d);
-      })
-      .catch(() => {
-        if (!cancelled) setData(null);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const openMovie = useCallback(
-    (movie: Movie) => {
-      onOpenMovie(movie);
-    },
-    [onOpenMovie],
-  );
-
-  const items = data?.items ?? [];
-
   return (
     <section id={sectionId} className="scroll-mt-28">
       <div className="mb-3.5 flex flex-wrap items-start justify-between gap-3">
@@ -61,137 +24,57 @@ export function MemeReelsSection({
           <div>
             <h2 className="type-section-title">Meme reels</h2>
             <p className="type-section-sub mt-0 max-w-2xl">
-              Clips from YouTube&apos;s Data API (short + medium fallbacks). Server
-              cache limits API quota. Open the matching film below each reel.
+              A reel of iconic movie moments — we&apos;re still on set, lining up the next
+              laugh-out-loud cut.
             </p>
           </div>
         </div>
-        {data?.configured.youtube && data.configured.tmdb ? (
-          <Badge className="shrink-0 border-0 bg-amber-500/15 text-amber-100">
-            <Sparkles className="mr-1 size-3" aria-hidden />
-            YouTube + TMDB
-          </Badge>
-        ) : null}
+        <Badge className="shrink-0 border-0 bg-amber-500/15 text-amber-100">
+          <Sparkles className="mr-1 size-3" aria-hidden />
+          Coming soon
+        </Badge>
       </div>
 
-      <div className="app-panel overflow-hidden p-0 sm:p-0">
-        {loading ? (
-          <div className="flex min-h-[12rem] items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
-            <Loader2 className="size-5 animate-spin shrink-0" aria-hidden />
-            Loading reels…
+      <div className="app-panel overflow-hidden border-amber-500/15 bg-gradient-to-b from-amber-500/[0.07] via-card to-card p-0 sm:p-0">
+        <div className="relative px-4 py-12 sm:px-8 sm:py-14">
+          <div
+            className="pointer-events-none absolute inset-0 opacity-[0.35]"
+            aria-hidden
+          >
+            <div className="absolute -left-20 top-1/2 h-48 w-48 -translate-y-1/2 rounded-full bg-rose-500/20 blur-3xl" />
+            <div className="absolute -right-16 bottom-0 h-40 w-40 rounded-full bg-amber-500/15 blur-3xl" />
           </div>
-        ) : !data ? (
-          <p className="px-4 py-10 text-center text-sm text-muted-foreground">
-            Could not load meme reels.
-          </p>
-        ) : items.length === 0 ? (
-          <div className="space-y-2 px-4 py-10 text-center text-sm text-muted-foreground">
-            {!data.configured.tmdb ? (
-              <p>Add TMDB_API_KEY.</p>
-            ) : !data.configured.youtube ? (
-              <p>Add YOUTUBE_API_KEY (or YOUTUBE_DATA_API_KEY / GOOGLE_API_KEY) on the server.</p>
-            ) : data.warning ? (
-              <div className="space-y-2 text-xs text-amber-200/90">
-                <p>{data.warning}</p>
-                {data.emptyHint ? (
-                  <p className="rounded-md bg-muted/40 px-2 py-1.5 font-mono text-[11px] text-foreground/90">
-                    {data.emptyHint}
-                  </p>
-                ) : null}
-              </div>
-            ) : (
-              <p>No reels returned — check seeds in lib/meme-reels-seed.ts.</p>
-            )}
-          </div>
-        ) : (
-          <>
-            {data.warning ? (
-              <p className="border-b border-border/50 bg-amber-500/10 px-4 py-2 text-center text-xs text-amber-100/90">
-                {data.warning}
+
+          <div className="relative mx-auto flex max-w-lg flex-col items-center text-center">
+            <MoviefyTeaseMark className="mb-8" />
+
+            <p className="font-heading text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
+              Something good is in the edit bay
+            </p>
+            <p className="mt-3 text-sm leading-relaxed text-muted-foreground sm:text-base">
+              Picture this reel like a scene still shooting: lights, cameras, and a few
+              perfect memes almost ready for their close-up. When we yell &quot;That&apos;s a
+              wrap!&quot;, you&apos;ll get the first seat.
+            </p>
+
+            <div className="mt-8 w-full max-w-md rounded-2xl border border-border/60 bg-muted/25 px-4 py-3.5 sm:px-5">
+              <p className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">
+                Meanwhile
               </p>
-            ) : null}
-            <div
-              className={cn(
-                "max-h-[min(88dvh,720px)] snap-y snap-mandatory overflow-y-auto overscroll-y-contain [-ms-overflow-style:none] [scrollbar-width:thin]",
-                "sm:max-h-[min(82dvh,680px)]",
-              )}
-            >
-              {items.map((row) => (
-                <MemeReelSlide
-                  key={`${row.videoId}-${row.movie.id}`}
-                  row={row}
-                  onOpenMovie={openMovie}
-                />
-              ))}
+              <p className="mt-1.5 text-sm leading-snug text-foreground/90">
+                Explore any film on{" "}
+                <span className="font-medium text-primary">Explore</span> or{" "}
+                <span className="font-medium text-primary">Your theatre</span> — trailers,
+                takes, and video picks are already rolling there.
+              </p>
             </div>
-          </>
-        )}
+
+            <p className="mt-6 text-xs italic text-muted-foreground/90">
+              Popcorn optional. Excitement included.
+            </p>
+          </div>
+        </div>
       </div>
     </section>
-  );
-}
-
-function MemeReelSlide({
-  row,
-  onOpenMovie,
-}: {
-  row: MemeReelApiItem;
-  onOpenMovie: (movie: Movie) => void;
-}) {
-  const href = movieToDetailPageHref(row.movie, "reels");
-  const embedSrc = `https://www.youtube.com/embed/${row.videoId}?rel=0&modestbranding=1&playsinline=1`;
-
-  return (
-    <article className="snap-start border-b border-border/40 last:border-b-0">
-      <div className="mx-auto flex max-w-lg flex-col gap-3 px-3 py-5 sm:px-5 sm:py-6">
-        <div className="relative mx-auto w-full max-w-[min(100%,22rem)] overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_20px_50px_-20px_rgba(0,0,0,0.85)] ring-1 ring-white/5">
-          <div className="relative aspect-[9/16] w-full bg-zinc-950">
-            <iframe
-              title={row.videoTitle}
-              src={embedSrc}
-              className="absolute inset-0 size-full border-0"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-              allowFullScreen
-              loading="lazy"
-              referrerPolicy="strict-origin-when-cross-origin"
-            />
-          </div>
-        </div>
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div className="min-w-0">
-            <Badge className="mb-1.5 border-0 bg-amber-500/20 text-[10px] font-medium uppercase tracking-wide text-amber-100">
-              {row.memeTag}
-            </Badge>
-            <p className="line-clamp-2 text-sm font-medium text-foreground">
-              {row.videoTitle}
-            </p>
-            <p className="text-xs text-muted-foreground">{row.channelTitle}</p>
-          </div>
-          {href ? (
-            <div className="flex shrink-0 flex-wrap gap-2">
-              <Button
-                type="button"
-                className="gap-2 bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-md hover:from-violet-500 hover:to-fuchsia-500"
-                onClick={() => onOpenMovie(row.movie)}
-              >
-                <Clapperboard className="size-4 shrink-0" />
-                Open movie
-              </Button>
-              <Link
-                href={href}
-                className={cn(
-                  buttonVariants({ variant: "outline", size: "default" }),
-                  "border-border/60",
-                )}
-              >
-                Open in new tab
-              </Link>
-            </div>
-          ) : (
-            <p className="text-xs text-muted-foreground">Missing TMDB link for this title.</p>
-          )}
-        </div>
-      </div>
-    </article>
   );
 }

@@ -21,7 +21,6 @@ type AiHints = {
   genres?: string[];
   language?: string;
   era?: string;
-  vibe?: string;
 };
 
 function normalizeEra(s: string | undefined): PickForMeEra {
@@ -70,18 +69,34 @@ function parseAiHintsJson(text: string): AiHints | null {
 
 /** Google AI Studio / Gemini API — key as `GEMINI_API_KEY`. */
 async function interpretPromptWithGemini(
-  prompt: string,
+  body: PickForMeRequest,
 ): Promise<AiHints | null> {
   const key = process.env.GEMINI_API_KEY?.trim();
-  if (!key || !prompt.trim()) return null;
+  const prompt = body.prompt?.trim() ?? "";
+  if (!key || !prompt) return null;
 
   const model = safeGeminiModelId(process.env.GEMINI_PICK_MODEL);
-  const system = `You map casual movie requests to strict JSON filters for TMDB discover.
-Allowed genre names (use exact spelling): ${GENRES.join(", ")}.
-language: ISO 639-1 two-letter code, or empty string if unspecified. Examples: en, hi, es, fr, ja, ko, zh, ta, ml.
-era: one of: any, 2020s, 2010s, 2000s, 1990s, classics.
-vibe: crowd (popular hits), critics (high ratings + enough votes), wild (surprising / eclectic).
-Return ONLY compact JSON with these keys: genres (array of strings), language (string), era (string), vibe (string). No markdown, no prose.`;
+  const uiGenres = body.genres.length ? body.genres.join(", ") : "none";
+  const uiLang = body.language.trim() || "any (no filter)";
+  const uiEra = body.era;
+  const system = `You help TMDB movie discover. Output JSON only (no markdown).
+
+Allowed genre names (exact spelling): ${GENRES.join(", ")}.
+
+Fields:
+- genres: subset of allowed names that match the user's wish. If the UI already selected genres, INCLUDE those same names in your array when they still fit the wish; you may ADD more from the allowed list. Never output a genre name not in the allowed list.
+- language: ISO 639-1 two-letter code, or "" if not implied. Examples: en, hi, es, fr, ja, ko, zh, ta, ml.
+- era: one of: any, 2020s, 2010s, 2000s, 1990s, classics — only if the wish implies a time period; otherwise "any".
+
+The server merges your JSON with UI toggles: UI language and era win when the user already set them; genres are combined with UI selections.`;
+
+  const userText = `Current UI filters (respect these; the user's text may refine or extend them):
+- genres toggled on: ${uiGenres}
+- language: ${uiLang}
+- era: ${body.era}
+
+User wish:
+${prompt.slice(0, 800)}`;
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`;
 
@@ -94,12 +109,12 @@ Return ONLY compact JSON with these keys: genres (array of strings), language (s
         contents: [
           {
             role: "user",
-            parts: [{ text: prompt.slice(0, 800) }],
+            parts: [{ text: userText }],
           },
         ],
         generationConfig: {
-          temperature: 0.35,
-          maxOutputTokens: 256,
+          temperature: 0.25,
+          maxOutputTokens: 320,
           responseMimeType: "application/json",
         },
       }),
@@ -126,7 +141,14 @@ function mergeRequestWithAi(
     .map((g) => (typeof g === "string" && isGenre(g) ? g : null))
     .filter((g): g is Genre => g != null);
 
-  const genres = body.genres.length ? body.genres : aiGenres;
+  const merged: Genre[] = [];
+  const seen = new Set<string>();
+  for (const g of [...body.genres, ...aiGenres]) {
+    if (seen.has(g)) continue;
+    seen.add(g);
+    merged.push(g);
+  }
+  const genres = merged.slice(0, 4);
 
   const language =
     body.language.trim() !== ""
@@ -212,7 +234,7 @@ export async function POST(request: NextRequest) {
 
   let usedAi = false;
   if (prompt && process.env.GEMINI_API_KEY) {
-    const hints = await interpretPromptWithGemini(prompt);
+    const hints = await interpretPromptWithGemini(effective);
     if (hints) {
       effective = mergeRequestWithAi(effective, hints);
       usedAi = true;
@@ -288,8 +310,17 @@ export async function POST(request: NextRequest) {
     pool = [...merged.values()];
   }
 
+  if (effective.genres.length > 0) {
+    const wanted = new Set(effective.genres.map((g) => tmdbGenreIdFor(g)));
+    pool = pool.filter((m) =>
+      (m.genre_ids ?? []).some((id) => wanted.has(id)),
+    );
+  }
+
   const five = pickFiveDiverse(pool, effective.vibe);
-  const movies = five.map((item) => movieFromTmdbDiscoverItem(item));
+  const movies = five.map((item) =>
+    movieFromTmdbDiscoverItem(item, effective.genres),
+  );
 
   return NextResponse.json({
     configured: true,

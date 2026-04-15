@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
   CalendarDays,
@@ -12,9 +12,7 @@ import {
   Globe,
   Heart,
   Loader2,
-  LogOut,
   Megaphone,
-  Settings,
   Plus,
   Search,
   UserPlus,
@@ -42,15 +40,6 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import {
   Select,
   SelectContent,
@@ -93,10 +82,11 @@ import type {
 import { movieFromTmdbDiscoverItem } from "@/lib/tmdb-genre-map";
 import { tmdbGenreLabels } from "@/lib/tmdb-genre-labels";
 import { cn } from "@/lib/utils";
-import { avatarLetter } from "@/lib/display-name";
+import { AppUserButton } from "@/components/app-user-button";
 import { SearchSuggestDropdown } from "@/components/search-suggest-dropdown";
 import { ExploreJumpNav, type ExploreJumpLink } from "@/components/explore-jump-nav";
 import { ExploreSpotlightRails } from "@/components/explore-spotlight-rails";
+import { MobileAppNavSheet } from "@/components/mobile-app-nav-sheet";
 import { PickForMePanel } from "@/components/pick-for-me-panel";
 import { clearExploreRecentLocal } from "@/lib/explore-recent-storage";
 import { clearAllExploreRecentOpens } from "@/lib/supabase/explore-recent-service";
@@ -235,10 +225,11 @@ function CommunityPlaylistCard({
 
 export function ExplorePage() {
   const router = useRouter();
+  const pathname = usePathname() ?? "";
   const searchParams = useSearchParams();
   const searchWrapRef = useRef<HTMLDivElement>(null);
   const genreFromUrlApplied = useRef<string | null>(null);
-  const { client, session, ready } = useSupabaseApp();
+  const { client, appUser, ready } = useSupabaseApp();
   const [communityPlaylists, setCommunityPlaylists] = useState<
     CommunityPlaylist[]
   >([]);
@@ -282,8 +273,8 @@ export function ExplorePage() {
 
   const clearExploreRecent = useCallback(async () => {
     clearExploreRecentLocal();
-    if (client && session?.user) {
-      const ok = await clearAllExploreRecentOpens(client, session.user.id);
+    if (client && appUser) {
+      const ok = await clearAllExploreRecentOpens(client, appUser.id);
       if (!ok) {
         toast("Could not clear server history — device list was cleared.");
       } else {
@@ -292,7 +283,7 @@ export function ExplorePage() {
     }
     setExploreLsTick((n) => n + 1);
     toast("Recently viewed cleared");
-  }, [client, session, toast]);
+  }, [client, appUser, toast]);
 
   useEffect(() => {
     if (!toastMsg) return;
@@ -301,13 +292,13 @@ export function ExplorePage() {
   }, [toastMsg]);
 
   useEffect(() => {
-    if (!ready || !client || !session?.user) return;
+    if (!ready || !client || !appUser) return;
     let cancelled = false;
     setCommunityLoading(true);
     void fetchPublicCommunityPlaylists(client)
       .then((rows) => {
         if (cancelled) return;
-        const uid = session.user.id;
+        const uid = appUser.id;
         setCommunityPlaylists(rows.filter((p) => p.ownerUserId !== uid));
       })
       .finally(() => {
@@ -316,25 +307,25 @@ export function ExplorePage() {
     return () => {
       cancelled = true;
     };
-  }, [ready, client, session?.user?.id]);
+  }, [ready, client, appUser?.id]);
 
   useEffect(() => {
-    if (!ready || !client || !session?.user) return;
-    void fetchFollowedPlaylistIds(client, session.user.id).then(setFollowedIds);
-  }, [ready, client, session?.user?.id]);
+    if (!ready || !client || !appUser) return;
+    void fetchFollowedPlaylistIds(client, appUser.id).then(setFollowedIds);
+  }, [ready, client, appUser?.id]);
 
   useEffect(() => {
-    if (!ready || !client || !session?.user) return;
-    void fetchLikedPlaylistIds(client, session.user.id).then(setLikedIds);
-  }, [ready, client, session?.user?.id]);
+    if (!ready || !client || !appUser) return;
+    void fetchLikedPlaylistIds(client, appUser.id).then(setLikedIds);
+  }, [ready, client, appUser?.id]);
 
   useEffect(() => {
-    if (!ready || !client || !session?.user) {
+    if (!ready || !client || !appUser) {
       setWatchlistMovies([]);
       setWatchlistLoading(false);
       return;
     }
-    const uid = session.user.id;
+    const uid = appUser.id;
     try {
       const raw = sessionStorage.getItem(
         `${WATCHLIST_SESSION_CACHE_PREFIX}${uid}`,
@@ -370,17 +361,17 @@ export function ExplorePage() {
     return () => {
       cancelled = true;
     };
-  }, [ready, client, session?.user?.id]);
+  }, [ready, client, appUser?.id]);
 
   useEffect(() => {
-    if (!ready || !client || !session?.user) {
+    if (!ready || !client || !appUser) {
       setServerExploreRecentOpens([]);
       setExploreRecentLoading(false);
       return;
     }
     let cancelled = false;
     setExploreRecentLoading(true);
-    void fetchExploreRecentOpens(client, session.user.id)
+    void fetchExploreRecentOpens(client, appUser.id)
       .then((rows) => {
         if (!cancelled) setServerExploreRecentOpens(rows);
       })
@@ -390,7 +381,7 @@ export function ExplorePage() {
     return () => {
       cancelled = true;
     };
-  }, [ready, client, session?.user?.id]);
+  }, [ready, client, appUser?.id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -570,8 +561,8 @@ export function ExplorePage() {
 
   function selectMovie(movie: Movie) {
     pushExploreRecent(movie);
-    if (client && session?.user) {
-      void upsertExploreRecentOpen(client, session.user.id, movie);
+    if (client && appUser) {
+      void upsertExploreRecentOpen(client, appUser.id, movie);
     }
     setExploreLsTick((n) => n + 1);
     const href = movieToDetailPageHref(movie, "explore");
@@ -620,12 +611,12 @@ export function ExplorePage() {
   }
 
   async function toggleFollow(id: string) {
-    if (!client || !session?.user) return;
+    if (!client || !appUser) return;
     const was = followedIds.has(id);
     const next = !was;
     const ok = await setPlaylistFollowedDb(
       client,
-      session.user.id,
+      appUser.id,
       id,
       next,
     );
@@ -633,13 +624,13 @@ export function ExplorePage() {
       toast("Could not update follow");
       return;
     }
-    const fresh = await fetchFollowedPlaylistIds(client, session.user.id);
+    const fresh = await fetchFollowedPlaylistIds(client, appUser.id);
     setFollowedIds(fresh);
     toast(was ? "Unfollowed playlist" : "Following this playlist");
   }
 
   async function toggleLike(id: string) {
-    if (!client || !session?.user) return;
+    if (!client || !appUser) return;
     const was = likedIds.has(id);
     const next = !was;
     const delta = next ? 1 : -1;
@@ -656,7 +647,7 @@ export function ExplorePage() {
           : p,
       ),
     );
-    const ok = await setPlaylistLikedDb(client, session.user.id, id, next);
+    const ok = await setPlaylistLikedDb(client, appUser.id, id, next);
     if (!ok) {
       setLikedIds((prev) => {
         const s = new Set(prev);
@@ -681,15 +672,17 @@ export function ExplorePage() {
     <div className="min-h-dvh text-foreground motion-safe:transition-opacity motion-safe:duration-200">
       <header className="sticky top-0 z-30 border-b border-border/60 bg-card/45 pt-[env(safe-area-inset-top,0px)] backdrop-blur-xl supports-[backdrop-filter]:bg-card/35">
         <div className="mx-auto flex max-w-[1400px] items-center justify-between gap-3 px-3 py-3 sm:px-5">
-          <div className="flex items-center gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
+            <MobileAppNavSheet />
             <Link
               href="/app"
-              className="flex min-h-10 items-center gap-2 rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-sm text-foreground/90 transition hover:bg-muted/50"
+              aria-label="Your theatre"
+              className="hidden min-h-10 shrink-0 items-center gap-2 rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-sm text-foreground/90 transition hover:bg-muted/50 lg:inline-flex"
             >
-              <ArrowLeft className="size-4" />
-              <span className="hidden sm:inline">Your theatre</span>
+              <ArrowLeft className="size-4 shrink-0" />
+              <span>Your theatre</span>
             </Link>
-            <div className="flex items-center gap-2">
+            <div className="flex min-w-0 items-center gap-2">
               <div className="flex size-9 items-center justify-center rounded-lg bg-primary/20 text-primary">
                 <Compass className="size-4" />
               </div>
@@ -700,76 +693,76 @@ export function ExplorePage() {
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-            <Link
-              href="/app/releases"
-              aria-label="Release radar"
-              title="Release radar"
-              className="inline-flex min-h-10 items-center gap-1.5 rounded-md px-2.5 py-2 text-sm text-muted-foreground transition hover:bg-muted/40 hover:text-foreground"
-            >
-              <CalendarDays className="size-4 shrink-0" />
-              <span className="hidden sm:inline">Release radar</span>
-            </Link>
-            <Link
-              href="/app/reels"
-              aria-label="Meme reels"
-              title="Meme reels"
-              className="inline-flex min-h-10 items-center gap-1.5 rounded-md px-2.5 py-2 text-sm text-muted-foreground transition hover:bg-muted/40 hover:text-foreground"
-            >
-              <Film className="size-4 shrink-0" />
-              <span className="hidden sm:inline">Meme reels</span>
-            </Link>
-            <Link
-              href="/app"
-              className="hidden items-center gap-2 text-sm text-muted-foreground transition hover:text-foreground sm:inline-flex"
-            >
-              <Clapperboard className="size-4" />
-              Your theatre
-            </Link>
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                aria-label="Account menu"
+            <div className="flex items-center gap-1 lg:hidden">
+              <Link
+                href="/app"
+                aria-label="Your theatre"
+                title="Your theatre"
                 className={cn(
-                  buttonVariants({ variant: "ghost", size: "icon-sm" }),
-                  "rounded-full text-foreground hover:bg-muted/50",
+                  buttonVariants({ variant: "secondary", size: "icon" }),
+                  "size-10 shrink-0 border-0 bg-muted/50",
+                  (pathname === "/app" || pathname === "/app/") &&
+                    "bg-muted/70 ring-1 ring-violet-400/40",
                 )}
               >
-                <Avatar size="sm">
-                  <AvatarFallback>
-                    {avatarLetter(null, session)}
-                  </AvatarFallback>
-                </Avatar>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                align="end"
-                sideOffset={8}
-                className="min-w-48 border-border/60 bg-popover text-popover-foreground"
+                <Clapperboard className="size-4" aria-hidden />
+              </Link>
+              <Link
+                href="/app/releases"
+                aria-label="Release radar"
+                title="Release radar"
+                className={cn(
+                  buttonVariants({ variant: "secondary", size: "icon" }),
+                  "size-10 shrink-0 border-0 bg-muted/50 text-foreground hover:bg-muted/70",
+                  pathname.startsWith("/app/releases") &&
+                    "bg-muted/70 ring-1 ring-violet-400/40",
+                )}
               >
-                <DropdownMenuLabel className="text-muted-foreground">
-                  Account
-                </DropdownMenuLabel>
-                <DropdownMenuItem
-                  disabled
-                  className="text-muted-foreground focus:bg-muted/50 focus:text-foreground"
-                >
-                  <Settings className="size-4 opacity-60" />
-                  Settings
-                </DropdownMenuItem>
-                <DropdownMenuSeparator className="bg-border/60" />
-                <DropdownMenuItem
-                  variant="destructive"
-                  className="focus:bg-red-950/50"
-                  onClick={() => {
-                    void client?.auth.signOut().then(() => {
-                      router.push("/?auth=sign-in");
-                      router.refresh();
-                    });
-                  }}
-                >
-                  <LogOut className="size-4" />
-                  Sign out
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+                <CalendarDays className="size-4" aria-hidden />
+              </Link>
+              <Link
+                href="/app/reels"
+                aria-label="Meme reels"
+                title="Meme reels"
+                className={cn(
+                  buttonVariants({ variant: "secondary", size: "icon" }),
+                  "size-10 shrink-0 border-0 bg-muted/50 text-foreground hover:bg-muted/70",
+                  pathname.startsWith("/app/reels") &&
+                    "bg-muted/70 ring-1 ring-violet-400/40",
+                )}
+              >
+                <Film className="size-4" aria-hidden />
+              </Link>
+            </div>
+            <div className="hidden items-center gap-1.5 lg:flex">
+              <Link
+                href="/app/releases"
+                aria-label="Release radar"
+                title="Release radar"
+                className={cn(
+                  "inline-flex min-h-10 items-center gap-1.5 rounded-md px-2.5 py-2 text-sm text-muted-foreground transition hover:bg-muted/40 hover:text-foreground",
+                  pathname.startsWith("/app/releases") &&
+                    "bg-muted/50 text-foreground ring-1 ring-violet-400/30",
+                )}
+              >
+                <CalendarDays className="size-4 shrink-0" aria-hidden />
+                Release radar
+              </Link>
+              <Link
+                href="/app/reels"
+                aria-label="Meme reels"
+                title="Meme reels"
+                className={cn(
+                  "inline-flex min-h-10 items-center gap-1.5 rounded-md px-2.5 py-2 text-sm text-muted-foreground transition hover:bg-muted/40 hover:text-foreground",
+                  pathname.startsWith("/app/reels") &&
+                    "bg-muted/50 text-foreground ring-1 ring-violet-400/30",
+                )}
+              >
+                <Film className="size-4 shrink-0" aria-hidden />
+                Meme reels
+              </Link>
+            </div>
+            <AppUserButton />
           </div>
         </div>
       </header>
@@ -812,7 +805,7 @@ export function ExplorePage() {
                 <button
                   type="button"
                   aria-label="Clear search"
-                  className="absolute right-2 top-1/2 z-[1] rounded-md p-1 text-muted-foreground transition hover:bg-muted/50 hover:text-foreground"
+                  className="absolute right-1.5 top-1/2 z-[1] flex size-10 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition hover:bg-muted/50 hover:text-foreground"
                   onClick={() => {
                     setSearchQuery("");
                     setSuggestData(null);
@@ -1154,10 +1147,10 @@ export function ExplorePage() {
                   onToggleFollow={() => void toggleFollow(p.id)}
                   onToggleLike={() => void toggleLike(p.id)}
                   onSaveToLibrary={async () => {
-                    if (!client || !session?.user) return;
+                    if (!client || !appUser) return;
                     const pl = await clonePublicPlaylistForUser(
                       client,
-                      session.user.id,
+                      appUser.id,
                       p.id,
                     );
                     toast(
@@ -1196,10 +1189,10 @@ export function ExplorePage() {
                     onToggleFollow={() => void toggleFollow(p.id)}
                     onToggleLike={() => void toggleLike(p.id)}
                     onSaveToLibrary={async () => {
-                      if (!client || !session?.user) return;
+                      if (!client || !appUser) return;
                       const pl = await clonePublicPlaylistForUser(
                         client,
-                        session.user.id,
+                        appUser.id,
                         p.id,
                       );
                       toast(

@@ -21,13 +21,13 @@ export default function TmdbMoviePage() {
   const params = useParams();
   const pathname = usePathname();
   const sp = useSearchParams();
-  const { client, session } = useSupabaseApp();
+  const { client, appUser } = useSupabaseApp();
 
   const viewerDisplayName =
-    (session?.user?.user_metadata as { full_name?: string; name?: string } | undefined)
+    (appUser?.user_metadata as { full_name?: string; name?: string } | undefined)
       ?.full_name ??
-    (session?.user?.user_metadata as { name?: string } | undefined)?.name ??
-    session?.user?.email?.split("@")[0] ??
+    (appUser?.user_metadata as { name?: string } | undefined)?.name ??
+    appUser?.email?.split("@")[0] ??
     null;
   const [savedIds, setSavedIds] = useState<Set<string>>(() => new Set());
   const [libraryPlaylists, setLibraryPlaylists] = useState<Playlist[]>([]);
@@ -91,14 +91,14 @@ export default function TmdbMoviePage() {
   }, [toastMsg]);
 
   useEffect(() => {
-    if (!client || !session?.user) return;
-    void fetchSavedMovieKeys(client, session.user.id).then(setSavedIds);
-  }, [client, session?.user?.id]);
+    if (!client || !appUser) return;
+    void fetchSavedMovieKeys(client, appUser.id).then(setSavedIds);
+  }, [client, appUser?.id]);
 
   useEffect(() => {
-    if (!client || !session?.user || !movie) return;
-    void fetchUserPlaylists(client, session.user.id).then(setLibraryPlaylists);
-  }, [client, session?.user?.id, movie?.id]);
+    if (!client || !appUser || !movie) return;
+    void fetchUserPlaylists(client, appUser.id).then(setLibraryPlaylists);
+  }, [client, appUser?.id, movie?.id]);
 
   if (!movie) {
     return (
@@ -113,16 +113,16 @@ export default function TmdbMoviePage() {
     (movie.tmdbId != null && savedIds.has(`tmdb-${movie.tmdbId}`));
 
   async function refreshLibrary() {
-    if (!client || !session?.user) return;
-    const pl = await fetchUserPlaylists(client, session.user.id);
+    if (!client || !appUser) return;
+    const pl = await fetchUserPlaylists(client, appUser.id);
     setLibraryPlaylists(pl);
   }
 
   async function onToggleWatched() {
-    if (!client || !session?.user || !movie) return;
+    if (!client || !appUser || !movie) return;
     setWatchedBusy(true);
     try {
-      const pl = await getOrCreatePrimaryWatchedPlaylist(client, session.user.id);
+      const pl = await getOrCreatePrimaryWatchedPlaylist(client, appUser.id);
       if (!pl) {
         toast("Could not open your Watched list");
         return;
@@ -153,29 +153,29 @@ export default function TmdbMoviePage() {
         inActiveList={inAnyPlaylist}
         saved={saved}
         onToggleSave={async () => {
-          if (!client || !session?.user) return;
+          if (!client || !appUser) return;
           const was = saved;
-          const ok = await setMovieSavedDb(client, session.user.id, movie, !was);
+          const ok = await setMovieSavedDb(client, appUser.id, movie, !was);
           if (!ok) {
             toast("Could not update saved");
             return;
           }
-          const keys = await fetchSavedMovieKeys(client, session.user.id);
+          const keys = await fetchSavedMovieKeys(client, appUser.id);
           setSavedIds(keys);
           toast(was ? "Removed from saved" : "Saved for later");
         }}
         onAddToList={() => {
-          if (!session?.user) {
+          if (!appUser) {
             toast("Sign in to add this title to a playlist.");
             return;
           }
           setPickListOpen(true);
         }}
         watched={inWatched}
-        onToggleWatched={session?.user ? onToggleWatched : undefined}
+        onToggleWatched={appUser ? onToggleWatched : undefined}
         watchedBusy={watchedBusy}
         supabase={client}
-        userId={session?.user?.id ?? null}
+        userId={appUser?.id ?? null}
         viewerDisplayName={viewerDisplayName}
         tmdbMedia={tmdbMedia}
       />
@@ -184,7 +184,7 @@ export default function TmdbMoviePage() {
         onOpenChange={setPickListOpen}
         movie={movie}
         client={client}
-        userId={session?.user?.id ?? null}
+        userId={appUser?.id ?? null}
         onNotify={toast}
         onUpdated={refreshLibrary}
         signInNextPath={signInNextPath}

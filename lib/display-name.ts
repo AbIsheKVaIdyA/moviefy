@@ -1,4 +1,4 @@
-import type { Session } from "@supabase/supabase-js";
+import type { AppUser } from "@/lib/app-user";
 
 const GENERIC_DEFAULTS = new Set(
   ["movie fan", "moviefy user", "user", "there"].map((s) => s.toLowerCase()),
@@ -28,21 +28,20 @@ function displayNameFromUserMetadata(
 }
 
 /**
- * Profile row + Supabase session → display string for greeting.
- * Uses auth metadata (first/last name from sign-up) and profile.display_name.
- * Does not use the email address or Gmail local-part as a display name.
+ * Profile row + signed-in user → display string for greeting.
+ * Uses Clerk-style `user_metadata` and `profile.display_name`.
  */
 export function resolveUserDisplayName(
   profileDisplayName: string | null | undefined,
-  session: Session | null,
+  authUser: AppUser | null,
 ): string {
-  const meta = session?.user?.user_metadata as
+  const meta = authUser?.user_metadata as
     | Record<string, unknown>
     | undefined;
   const fromMeta = displayNameFromUserMetadata(meta);
   const rawProfile = profileDisplayName?.trim() ?? "";
   const emailLocal =
-    session?.user?.email?.split("@")[0]?.trim().toLowerCase() ?? "";
+    authUser?.email?.split("@")[0]?.trim().toLowerCase() ?? "";
   const profileIsEmailPrefix =
     Boolean(rawProfile && emailLocal) &&
     rawProfile.toLowerCase() === emailLocal;
@@ -64,9 +63,9 @@ export function resolveUserDisplayName(
 
 export function greetingFirstName(
   profileDisplayName: string | null | undefined,
-  session: Session | null,
+  authUser: AppUser | null,
 ): string {
-  const resolved = resolveUserDisplayName(profileDisplayName, session);
+  const resolved = resolveUserDisplayName(profileDisplayName, authUser);
   const first = firstNameFromFullName(resolved);
   if (first) return first;
   return resolved || "there";
@@ -74,8 +73,8 @@ export function greetingFirstName(
 
 export function avatarLetter(
   profileDisplayName: string | null | undefined,
-  session: Session | null,
+  authUser: AppUser | null,
 ): string {
-  const g = greetingFirstName(profileDisplayName, session);
+  const g = greetingFirstName(profileDisplayName, authUser);
   return g.slice(0, 1).toUpperCase() || "?";
 }
