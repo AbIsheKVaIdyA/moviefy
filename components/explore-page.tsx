@@ -229,7 +229,7 @@ export function ExplorePage() {
   const searchParams = useSearchParams();
   const searchWrapRef = useRef<HTMLDivElement>(null);
   const genreFromUrlApplied = useRef<string | null>(null);
-  const { client, appUser, ready } = useSupabaseApp();
+  const { client, appUser, dbUserId, ready } = useSupabaseApp();
   const [communityPlaylists, setCommunityPlaylists] = useState<
     CommunityPlaylist[]
   >([]);
@@ -273,8 +273,8 @@ export function ExplorePage() {
 
   const clearExploreRecent = useCallback(async () => {
     clearExploreRecentLocal();
-    if (client && appUser) {
-      const ok = await clearAllExploreRecentOpens(client, appUser.id);
+    if (client && dbUserId) {
+      const ok = await clearAllExploreRecentOpens(client, dbUserId);
       if (!ok) {
         toast("Could not clear server history — device list was cleared.");
       } else {
@@ -283,7 +283,7 @@ export function ExplorePage() {
     }
     setExploreLsTick((n) => n + 1);
     toast("Recently viewed cleared");
-  }, [client, appUser, toast]);
+  }, [client, dbUserId, toast]);
 
   useEffect(() => {
     if (!toastMsg) return;
@@ -292,13 +292,13 @@ export function ExplorePage() {
   }, [toastMsg]);
 
   useEffect(() => {
-    if (!ready || !client || !appUser) return;
+    if (!ready || !client || !appUser || !dbUserId) return;
     let cancelled = false;
     setCommunityLoading(true);
     void fetchPublicCommunityPlaylists(client)
       .then((rows) => {
         if (cancelled) return;
-        const uid = appUser.id;
+        const uid = dbUserId;
         setCommunityPlaylists(rows.filter((p) => p.ownerUserId !== uid));
       })
       .finally(() => {
@@ -307,25 +307,25 @@ export function ExplorePage() {
     return () => {
       cancelled = true;
     };
-  }, [ready, client, appUser?.id]);
+  }, [ready, client, appUser?.id, dbUserId]);
 
   useEffect(() => {
-    if (!ready || !client || !appUser) return;
-    void fetchFollowedPlaylistIds(client, appUser.id).then(setFollowedIds);
-  }, [ready, client, appUser?.id]);
+    if (!ready || !client || !dbUserId) return;
+    void fetchFollowedPlaylistIds(client, dbUserId).then(setFollowedIds);
+  }, [ready, client, dbUserId]);
 
   useEffect(() => {
-    if (!ready || !client || !appUser) return;
-    void fetchLikedPlaylistIds(client, appUser.id).then(setLikedIds);
-  }, [ready, client, appUser?.id]);
+    if (!ready || !client || !dbUserId) return;
+    void fetchLikedPlaylistIds(client, dbUserId).then(setLikedIds);
+  }, [ready, client, dbUserId]);
 
   useEffect(() => {
-    if (!ready || !client || !appUser) {
+    if (!ready || !client || !dbUserId) {
       setWatchlistMovies([]);
       setWatchlistLoading(false);
       return;
     }
-    const uid = appUser.id;
+    const uid = dbUserId;
     try {
       const raw = sessionStorage.getItem(
         `${WATCHLIST_SESSION_CACHE_PREFIX}${uid}`,
@@ -361,17 +361,17 @@ export function ExplorePage() {
     return () => {
       cancelled = true;
     };
-  }, [ready, client, appUser?.id]);
+  }, [ready, client, dbUserId]);
 
   useEffect(() => {
-    if (!ready || !client || !appUser) {
+    if (!ready || !client || !dbUserId) {
       setServerExploreRecentOpens([]);
       setExploreRecentLoading(false);
       return;
     }
     let cancelled = false;
     setExploreRecentLoading(true);
-    void fetchExploreRecentOpens(client, appUser.id)
+    void fetchExploreRecentOpens(client, dbUserId)
       .then((rows) => {
         if (!cancelled) setServerExploreRecentOpens(rows);
       })
@@ -381,7 +381,7 @@ export function ExplorePage() {
     return () => {
       cancelled = true;
     };
-  }, [ready, client, appUser?.id]);
+  }, [ready, client, dbUserId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -561,8 +561,8 @@ export function ExplorePage() {
 
   function selectMovie(movie: Movie) {
     pushExploreRecent(movie);
-    if (client && appUser) {
-      void upsertExploreRecentOpen(client, appUser.id, movie);
+    if (client && dbUserId) {
+      void upsertExploreRecentOpen(client, dbUserId, movie);
     }
     setExploreLsTick((n) => n + 1);
     const href = movieToDetailPageHref(movie, "explore");
@@ -611,12 +611,12 @@ export function ExplorePage() {
   }
 
   async function toggleFollow(id: string) {
-    if (!client || !appUser) return;
+    if (!client || !dbUserId) return;
     const was = followedIds.has(id);
     const next = !was;
     const ok = await setPlaylistFollowedDb(
       client,
-      appUser.id,
+      dbUserId,
       id,
       next,
     );
@@ -624,13 +624,13 @@ export function ExplorePage() {
       toast("Could not update follow");
       return;
     }
-    const fresh = await fetchFollowedPlaylistIds(client, appUser.id);
+    const fresh = await fetchFollowedPlaylistIds(client, dbUserId);
     setFollowedIds(fresh);
     toast(was ? "Unfollowed playlist" : "Following this playlist");
   }
 
   async function toggleLike(id: string) {
-    if (!client || !appUser) return;
+    if (!client || !dbUserId) return;
     const was = likedIds.has(id);
     const next = !was;
     const delta = next ? 1 : -1;
@@ -647,7 +647,7 @@ export function ExplorePage() {
           : p,
       ),
     );
-    const ok = await setPlaylistLikedDb(client, appUser.id, id, next);
+    const ok = await setPlaylistLikedDb(client, dbUserId, id, next);
     if (!ok) {
       setLikedIds((prev) => {
         const s = new Set(prev);
@@ -1147,10 +1147,10 @@ export function ExplorePage() {
                   onToggleFollow={() => void toggleFollow(p.id)}
                   onToggleLike={() => void toggleLike(p.id)}
                   onSaveToLibrary={async () => {
-                    if (!client || !appUser) return;
+                    if (!client || !dbUserId) return;
                     const pl = await clonePublicPlaylistForUser(
                       client,
-                      appUser.id,
+                      dbUserId,
                       p.id,
                     );
                     toast(
@@ -1189,10 +1189,10 @@ export function ExplorePage() {
                     onToggleFollow={() => void toggleFollow(p.id)}
                     onToggleLike={() => void toggleLike(p.id)}
                     onSaveToLibrary={async () => {
-                      if (!client || !appUser) return;
+                      if (!client || !dbUserId) return;
                       const pl = await clonePublicPlaylistForUser(
                         client,
-                        appUser.id,
+                        dbUserId,
                         p.id,
                       );
                       toast(

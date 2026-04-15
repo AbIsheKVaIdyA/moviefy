@@ -1,17 +1,17 @@
 import type { Metadata, Viewport } from "next";
 import { Analytics } from "@vercel/analytics/next";
-import { DM_Sans, JetBrains_Mono, Oswald } from "next/font/google";
+import { Archivo, Inter, JetBrains_Mono } from "next/font/google";
 import { ClerkAppShell } from "@/components/clerk-app-shell";
 import { SupabaseAppProvider } from "@/components/supabase-app-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
 
 /** UI body — neutral, readable. */
-const sans = DM_Sans({
+const sans = Inter({
   variable: "--font-body",
   subsets: ["latin"],
   display: "swap",
-  weight: ["400", "500", "600", "700"],
+  weight: ["400", "500", "600", "700", "800"],
 });
 
 const mono = JetBrains_Mono({
@@ -22,11 +22,11 @@ const mono = JetBrains_Mono({
 });
 
 /** Display / titles — bold condensed marquee energy. */
-const heading = Oswald({
+const heading = Archivo({
   variable: "--font-display",
   subsets: ["latin"],
   display: "swap",
-  weight: ["500", "600", "700"],
+  weight: ["600", "700", "800", "900"],
 });
 
 export const metadata: Metadata = {

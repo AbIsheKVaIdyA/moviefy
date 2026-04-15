@@ -399,7 +399,7 @@ create policy "movie_takes_update_own" on public.movie_user_takes for update usi
 drop policy if exists "movie_takes_delete_own" on public.movie_user_takes;
 create policy "movie_takes_delete_own" on public.movie_user_takes for delete using (auth.uid() = user_id);
 
--- Written-review likes & replies (see migrate-movie-review-likes-replies.sql)
+-- Written-review likes & replies (if using Clerk text ids, run migrate-clerk-user-ids.sql)
 create table if not exists public.movie_take_review_likes (
   movie_id uuid not null references public.movies (id) on delete cascade,
   review_author_id uuid not null references auth.users (id) on delete cascade,

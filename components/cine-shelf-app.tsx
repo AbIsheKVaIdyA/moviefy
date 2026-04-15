@@ -131,7 +131,7 @@ function GenrePill({
 export function MoviefyApp() {
   const pathname = usePathname();
   const router = useRouter();
-  const { client, appUser, ready, authError } = useSupabaseApp();
+  const { client, appUser, dbUserId, ready, authError } = useSupabaseApp();
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [activeId, setActiveId] = useState("");
   const [genreFilter, setGenreFilter] = useState<Genre | "all">("all");
@@ -164,10 +164,10 @@ export function MoviefyApp() {
   const [deletePlaylistOpen, setDeletePlaylistOpen] = useState(false);
 
   const loadLibrary = useCallback(async () => {
-    if (!client || !appUser) return;
+    if (!client || !dbUserId) return;
     setLibraryLoading(true);
     try {
-      const uid = appUser.id;
+      const uid = dbUserId;
       const [pl, saved, name, savedList, coming] = await Promise.all([
         fetchUserPlaylists(client, uid),
         fetchSavedMovieKeys(client, uid),
@@ -193,12 +193,12 @@ export function MoviefyApp() {
     } finally {
       setLibraryLoading(false);
     }
-  }, [client, appUser]);
+  }, [client, dbUserId]);
 
   useEffect(() => {
-    if (!ready || !client || !appUser) return;
+    if (!ready || !client || !dbUserId) return;
     void loadLibrary();
-  }, [ready, client, appUser?.id, loadLibrary]);
+  }, [ready, client, dbUserId, loadLibrary]);
 
   useEffect(() => {
     const on = () => {
@@ -241,10 +241,10 @@ export function MoviefyApp() {
   const signInNextPath = pathname || "/app";
 
   const toggleDetailWatched = useCallback(async () => {
-    if (!client || !appUser || !selectedMovie) return;
+    if (!client || !dbUserId || !selectedMovie) return;
     setWatchedDialogBusy(true);
     try {
-      const pl = await getOrCreatePrimaryWatchedPlaylist(client, appUser.id);
+      const pl = await getOrCreatePrimaryWatchedPlaylist(client, dbUserId);
       if (!pl) {
         pushToast("Could not open Watched list");
         return;
@@ -262,7 +262,7 @@ export function MoviefyApp() {
     } finally {
       setWatchedDialogBusy(false);
     }
-  }, [client, appUser, selectedMovie, selectedInWatched, loadLibrary]);
+  }, [client, dbUserId, selectedMovie, selectedInWatched, loadLibrary]);
 
   async function openComingRow(row: ReleaseWatchlistRow) {
     const item = releaseWatchlistRowToScheduleItem(row);
@@ -278,10 +278,10 @@ export function MoviefyApp() {
   }
 
   async function removeComingRow(row: ReleaseWatchlistRow) {
-    if (!client || !appUser) return;
+    if (!client || !dbUserId) return;
     const ok = await removeUserReleaseWatchlist(
       client,
-      appUser.id,
+      dbUserId,
       row.tmdbId,
       row.mediaType,
     );
@@ -419,8 +419,8 @@ export function MoviefyApp() {
   }
 
   async function createPlaylist() {
-    if (!client || !appUser) return;
-    const pl = await createPlaylistDb(client, appUser.id, {
+    if (!client || !dbUserId) return;
+    const pl = await createPlaylistDb(client, dbUserId, {
       name: newName.trim() || "Untitled playlist",
       description: newDesc.trim() || "No description yet.",
       kind: newKind,
@@ -496,8 +496,8 @@ export function MoviefyApp() {
   }
 
   async function duplicateActivePlaylist() {
-    if (!client || !appUser || !active) return;
-    const copy = await duplicatePlaylistDb(client, appUser.id, active);
+    if (!client || !dbUserId || !active) return;
+    const copy = await duplicatePlaylistDb(client, dbUserId, active);
     if (!copy) {
       pushToast("Could not duplicate list");
       return;
@@ -508,8 +508,8 @@ export function MoviefyApp() {
   }
 
   async function deleteActivePlaylist() {
-    if (!client || !appUser || !active) return;
-    const ok = await deletePlaylistDb(client, appUser.id, active.id);
+    if (!client || !dbUserId || !active) return;
+    const ok = await deletePlaylistDb(client, dbUserId, active.id);
     if (!ok) {
       pushToast("Could not delete playlist");
       return;
@@ -562,7 +562,7 @@ export function MoviefyApp() {
     );
   }
 
-  if (!ready || !appUser || libraryLoading) {
+  if (!ready || !appUser || !dbUserId || libraryLoading) {
     return (
       <div className="flex min-h-dvh items-center justify-center bg-black/35 px-6 text-white backdrop-blur-md">
         <MoviefyBrandLoader
@@ -1349,7 +1349,7 @@ export function MoviefyApp() {
         open={detailOpen}
         onOpenChange={setDetailOpen}
         supabase={client}
-        userId={appUser?.id ?? null}
+        userId={dbUserId}
         viewerDisplayName={
           displayName?.trim() ||
           appUser?.email?.split("@")[0] ||
@@ -1364,14 +1364,14 @@ export function MoviefyApp() {
             : false
         }
         onToggleSave={async () => {
-          if (!client || !appUser || !selectedMovie) return;
+          if (!client || !dbUserId || !selectedMovie) return;
           const was =
             savedIds.has(selectedMovie.id) ||
             (selectedMovie.tmdbId != null &&
               savedIds.has(`tmdb-${selectedMovie.tmdbId}`));
           const ok = await setMovieSavedDb(
             client,
-            appUser.id,
+            dbUserId,
             selectedMovie,
             !was,
           );
@@ -1380,8 +1380,8 @@ export function MoviefyApp() {
             return;
           }
           const [keys, list] = await Promise.all([
-            fetchSavedMovieKeys(client, appUser.id),
-            fetchSavedMoviesForUser(client, appUser.id),
+            fetchSavedMovieKeys(client, dbUserId),
+            fetchSavedMoviesForUser(client, dbUserId),
           ]);
           setSavedIds(keys);
           setSavedMovies(list);
@@ -1393,7 +1393,7 @@ export function MoviefyApp() {
           setPickListOpen(true);
         }}
         watched={selectedInWatched}
-        onToggleWatched={appUser ? toggleDetailWatched : undefined}
+        onToggleWatched={dbUserId ? toggleDetailWatched : undefined}
         watchedBusy={watchedDialogBusy}
       />
 
@@ -1405,7 +1405,7 @@ export function MoviefyApp() {
         }}
         movie={pickListMovie}
         client={client}
-        userId={appUser?.id ?? null}
+        userId={dbUserId}
         onNotify={pushToast}
         onUpdated={async () => {
           await loadLibrary();

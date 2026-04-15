@@ -128,26 +128,26 @@
 
 @utility font-heading {
   font-family: var(--font-display), ui-sans-serif, system-ui, sans-serif;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  line-height: 1.1;
+  font-weight: 800;
+  letter-spacing: -0.015em;
+  line-height: 1.06;
 }
 
 /* Typography scale — use on marketing + app sections for consistent hierarchy */
 @utility type-hero {
-  @apply font-heading text-3xl font-semibold tracking-tight text-foreground sm:text-4xl;
+  @apply font-heading text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl;
 }
 
 @utility type-section-title {
-  @apply font-heading text-lg font-semibold tracking-tight text-foreground sm:text-xl;
+  @apply font-heading text-lg font-bold tracking-tight text-foreground sm:text-xl;
 }
 
 @utility type-section-sub {
-  @apply mt-1 text-xs leading-relaxed text-muted-foreground sm:text-sm;
+  @apply mt-1 text-sm font-medium leading-relaxed text-muted-foreground sm:text-[0.95rem];
 }
 
 @utility type-kicker {
-  @apply font-heading text-sm font-semibold text-foreground;
+  @apply font-heading text-sm font-bold text-foreground;
 }
 
 @utility type-micro {
@@ -319,7 +319,7 @@
   }
 
   html.dark h3 {
-    @apply font-heading font-semibold text-foreground;
+    @apply font-heading font-bold text-foreground;
   }
 }
 

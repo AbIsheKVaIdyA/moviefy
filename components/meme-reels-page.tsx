@@ -15,13 +15,13 @@ import { upsertExploreRecentOpen } from "@/lib/supabase/explore-recent-service";
 import type { Movie } from "@/lib/types";
 export function MemeReelsPage() {
   const router = useRouter();
-  const { client, appUser } = useSupabaseApp();
+  const { client, dbUserId } = useSupabaseApp();
 
   const openMovie = useCallback(
     (movie: Movie) => {
       pushExploreRecent(movie);
-      if (client && appUser) {
-        void upsertExploreRecentOpen(client, appUser.id, movie);
+      if (client && dbUserId) {
+        void upsertExploreRecentOpen(client, dbUserId, movie);
       }
       const href = movieToDetailPageHref(movie, "reels");
       if (!href) return;
@@ -30,7 +30,7 @@ export function MemeReelsPage() {
         router.push(href);
       })();
     },
-    [client, router, appUser],
+    [client, router, dbUserId],
   );
 
   return (

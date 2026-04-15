@@ -3,14 +3,12 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { isClerkAuthActive, isClerkConfigured } from "@/lib/clerk/auth-mode";
 import { safeClerkRedirectDestination } from "@/lib/clerk/safe-redirect-url";
-import { updateSession } from "@/lib/supabase/update-session";
 
 const isAppRoute = createRouteMatcher(["/app(.*)"]);
 const isClerkAuthRoute = createRouteMatcher(["/sign-in(.*)", "/sign-up(.*)"]);
 
 /**
- * Clerk protects `/app` when Clerk env is set; Supabase cookies are still refreshed via
- * `updateSession` for DB clients.
+ * Clerk protects `/app` when Clerk env is set.
  */
 export default clerkMiddleware(async (auth, request: NextRequest) => {
   if (isClerkAuthActive()) {
@@ -38,7 +36,7 @@ export default clerkMiddleware(async (auth, request: NextRequest) => {
     return NextResponse.redirect(new URL("/", request.url));
   }
 
-  return updateSession(request);
+  return NextResponse.next({ request });
 });
 
 export const config = {

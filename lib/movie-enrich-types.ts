@@ -2,6 +2,8 @@ export type StreamingEntry = {
   name: string;
   type: "flatrate" | "rent" | "buy";
   logoUrl: string | null;
+  /** TMDB/JustWatch deep link for this title in the selected region. */
+  watchUrl: string | null;
 };
 
 export type YoutubeReview = {

@@ -22,6 +22,8 @@ import { cn } from "@/lib/utils";
 const LANDING_NEXT = "/app/explore";
 const landingSignInHref = `/sign-in?redirect_url=${encodeURIComponent(LANDING_NEXT)}`;
 const landingSignUpHref = `/sign-up?redirect_url=${encodeURIComponent(LANDING_NEXT)}`;
+const POSITIONING_STATEMENT =
+  "Moviefy helps you find the perfect movie in seconds — no endless scrolling.";
 
 function PosterTile({
   movie,
@@ -73,16 +75,6 @@ export default async function Home() {
         : landingDecorMovies(6);
   const marqueeSource = popular.length ? popular : landingDecorMovies(12);
   const marqueeMovies = [...marqueeSource, ...marqueeSource, ...marqueeSource];
-  const bentoTop =
-    popular.length >= 5
-      ? popular.slice(0, 5)
-      : [...popular, ...landingDecorMovies(5 - popular.length)];
-  const bentoBottom =
-    popular.length >= 10
-      ? popular.slice(5, 10)
-      : popular.length > 5
-        ? [...popular.slice(5), ...landingDecorMovies(10 - popular.length)]
-        : landingDecorMovies(5);
   const shelfMovies = popular.length ? popular : landingDecorMovies(10);
   const mobileStrip = popular.length ? popular : landingDecorMovies(8);
 
@@ -155,15 +147,19 @@ export default async function Home() {
 
           <div className="relative grid gap-12 px-6 py-14 sm:px-10 sm:py-16 lg:grid-cols-[1.05fr_0.95fr] lg:items-center lg:gap-8 lg:py-20">
             <div className="max-w-xl lg:max-w-none">
-              <h1 className="font-heading text-[2.35rem] font-semibold leading-[1.08] tracking-tight sm:text-5xl lg:text-[3.25rem] xl:text-[3.5rem]">
-                Your taste,{" "}
-                <span className="landing-text-shimmer">one endless shelf</span>
+              <p className="inline-flex rounded-full border border-primary/25 bg-primary/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-primary/90">
+                Stop scrolling. Get the perfect movie in 30 seconds.
+              </p>
+              <h1 className="mt-4 font-heading text-[2.35rem] font-semibold leading-[1.08] tracking-tight sm:text-5xl lg:text-[3.25rem] xl:text-[3.5rem]">
+                Find your next movie
                 <br />
-                of films.
+                in <span className="landing-text-shimmer">30 seconds</span>
               </h1>
               <p className="mt-5 max-w-lg text-base leading-relaxed text-zinc-400 sm:text-lg">
-                Rank what you watch, build mood playlists like Spotify, binge discovery on Explore, and
-                flex public lists — all in a UI that feels fast, dark, and a little addictive.
+                Moviefy learns your taste better than Netflix. {POSITIONING_STATEMENT}
+              </p>
+              <p className="mt-2 max-w-lg text-sm font-medium text-zinc-300">
+                Daily recommendation powered by your taste profile.
               </p>
               <div className="mt-8 flex flex-wrap gap-3">
                 <Link
@@ -174,14 +170,14 @@ export default async function Home() {
                   )}
                 >
                   <Play className="size-4 fill-current" />
-                  Open Moviefy
+                  Pick for me
                 </Link>
                 <Link
                   href={landingSignInHref}
                   className={cn(buttonVariants({ size: "lg", variant: "outline" }), "h-12 border-white/15 bg-white/5")}
                 >
                   <Compass className="size-4" />
-                  Browse Explore
+                  Your taste profile
                 </Link>
               </div>
             </div>
@@ -279,85 +275,25 @@ export default async function Home() {
           </div>
         </section>
 
-        {/* Bento */}
+        {/* How it works */}
         <section className="mt-16">
-          <div className="mb-8 text-center sm:text-left">
-            <h2 className="font-heading text-3xl font-semibold sm:text-4xl">Built for obsession</h2>
+          <div className="mb-10 text-center sm:text-left">
+            <h2 className="font-heading text-3xl font-semibold sm:text-4xl">No more endless scrolling</h2>
             <p className="mt-2 max-w-2xl text-zinc-400">
-              Every screen is dense with posters and momentum — the opposite of a boring watchlist app.
+              A simple flow that learns what you like and gives you a high-confidence pick fast.
             </p>
           </div>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 lg:grid-rows-2">
-            <article className="group relative overflow-hidden rounded-3xl border border-white/[0.08] bg-gradient-to-br from-zinc-900/90 to-zinc-950 p-6 lg:col-span-2 lg:row-span-2 lg:p-8">
-              <div className="absolute -right-8 -top-8 flex gap-2 opacity-40 transition group-hover:opacity-60">
-                {bentoTop.map((m) => (
+          <div className="relative overflow-hidden rounded-[2rem] border border-white/[0.08] bg-zinc-950/45 px-5 py-6 sm:px-8 sm:py-8">
+            <div className="pointer-events-none absolute inset-0 opacity-[0.3]">
+              <div className="landing-marquee-track gap-2 pr-2">
+                {marqueeMovies.map((m, i) => (
                   <div
-                    key={m.id}
-                    className="relative h-32 w-20 rotate-6 overflow-hidden rounded-lg shadow-xl ring-1 ring-white/10"
+                    key={`flow-${m.id}-${i}`}
+                    className="relative aspect-[2/3] w-[56px] shrink-0 overflow-hidden rounded-md ring-1 ring-white/10 sm:w-[64px]"
                   >
                     <PosterImage
                       src={m.posterImage}
                       alt=""
-                      fill
-                      placeholderGradient={m.posterClass}
-                      className="object-cover"
-                      sizes="80px"
-                    />
-                  </div>
-                ))}
-              </div>
-              <ListMusic className="relative z-10 size-10 rounded-xl bg-primary/15 p-2 text-primary" />
-              <h3 className="relative z-10 mt-5 font-heading text-2xl font-semibold">
-                Playlist culture, not spreadsheets
-              </h3>
-              <p className="relative z-10 mt-3 max-w-md text-sm leading-relaxed text-zinc-400">
-                Late-night comfort, rainy Sunday noir, letterboxd-core ranked lists — curate like you mean
-                it. Public or private per list.
-              </p>
-              <Link
-                href={landingSignUpHref}
-                className={cn(
-                  buttonVariants({ variant: "secondary", size: "sm" }),
-                  "relative z-10 mt-6 border-0 bg-white/10 text-white hover:bg-white/15",
-                )}
-              >
-                Start a list
-                <ArrowRight className="size-4" />
-              </Link>
-            </article>
-
-            <article className="rounded-3xl border border-white/[0.08] bg-zinc-900/50 p-6">
-              <Compass className="size-9 rounded-lg bg-sky-500/15 p-2 text-sky-400" />
-              <h3 className="mt-4 font-heading text-xl font-semibold">Explore & genres</h3>
-              <p className="mt-2 text-sm text-zinc-400">
-                Live TMDB rails, public creator playlists, follow and save to your library.
-              </p>
-              <Link
-                href={landingSignInHref}
-                className="mt-4 inline-flex text-sm font-medium text-primary hover:underline"
-              >
-                Open Explore →
-              </Link>
-            </article>
-
-            <article className="rounded-3xl border border-white/[0.08] bg-zinc-900/50 p-6">
-              <Zap className="size-9 rounded-lg bg-amber-500/15 p-2 text-amber-400" />
-              <h3 className="mt-4 font-heading text-xl font-semibold">Instant detail</h3>
-              <p className="mt-2 text-sm text-zinc-400">
-                Tap any poster: scores, streaming, YouTube reviews — without leaving the flow.
-              </p>
-            </article>
-
-            <article className="rounded-3xl border border-white/[0.08] bg-gradient-to-br from-fuchsia-950/40 to-zinc-950 p-6 md:col-span-2 lg:col-span-2">
-              <div className="flex flex-wrap gap-3">
-                {bentoBottom.map((m) => (
-                  <div
-                    key={m.id}
-                    className="relative aspect-[2/3] w-[56px] overflow-hidden rounded-md ring-1 ring-white/10 sm:w-[64px]"
-                  >
-                    <PosterImage
-                      src={m.posterImage}
-                      alt={m.title || ""}
                       fill
                       placeholderGradient={m.posterClass}
                       className="object-cover"
@@ -366,12 +302,32 @@ export default async function Home() {
                   </div>
                 ))}
               </div>
-              <Heart className="mt-4 size-9 rounded-lg bg-rose-500/15 p-2 text-rose-400" />
-              <h3 className="mt-3 font-heading text-xl font-semibold">Save everything</h3>
-              <p className="mt-2 text-sm text-zinc-400">
-                Heart films, duplicate community playlists into your library, share with a link.
-              </p>
-            </article>
+              <div className="absolute inset-0 bg-gradient-to-r from-[#060607] via-[#060607]/72 to-[#060607]" />
+            </div>
+
+            <div className="relative grid gap-5 md:grid-cols-3">
+              <article className="rounded-2xl border border-white/10 bg-black/35 p-5 backdrop-blur-sm">
+                <Compass className="size-9 rounded-lg bg-sky-500/15 p-2 text-sky-400" />
+                <h3 className="mt-4 font-heading text-xl font-semibold">1. Tell us your taste</h3>
+                <p className="mt-2 text-sm text-zinc-300">
+                  Build your taste profile from genres, mood, era, and what you already love.
+                </p>
+              </article>
+              <article className="rounded-2xl border border-white/10 bg-black/35 p-5 backdrop-blur-sm">
+                <Zap className="size-9 rounded-lg bg-amber-500/15 p-2 text-amber-400" />
+                <h3 className="mt-4 font-heading text-xl font-semibold">2. Get a daily recommendation</h3>
+                <p className="mt-2 text-sm text-zinc-300">
+                  Moviefy narrows options fast and serves one high-confidence pick in seconds.
+                </p>
+              </article>
+              <article className="rounded-2xl border border-white/10 bg-black/35 p-5 backdrop-blur-sm">
+                <ListMusic className="size-9 rounded-lg bg-primary/15 p-2 text-primary" />
+                <h3 className="mt-4 font-heading text-xl font-semibold">3. Save your winners</h3>
+                <p className="mt-2 text-sm text-zinc-300">
+                  Keep your best picks in playlists and improve recommendations every day.
+                </p>
+              </article>
+            </div>
           </div>
         </section>
 
@@ -379,10 +335,10 @@ export default async function Home() {
         <section className="mt-16">
           <div className="mb-5 flex items-end justify-between gap-4">
             <div>
-              <h2 className="font-heading text-2xl font-semibold sm:text-3xl">Shelf preview</h2>
+              <h2 className="font-heading text-2xl font-semibold sm:text-3xl">Proof in posters</h2>
               <p className="mt-1 text-sm text-zinc-500">
                 {popular.length
-                  ? "Every title is a real TMDB poster — hover for names."
+                  ? ""
                   : "Gradient placeholders until TMDB_API_KEY is set — then real posters load here."}
               </p>
             </div>
@@ -419,26 +375,26 @@ export default async function Home() {
           <div className="pointer-events-none absolute -left-20 top-1/2 h-64 w-64 -translate-y-1/2 rounded-full bg-primary/20 blur-3xl" />
           <div className="pointer-events-none absolute -right-20 bottom-0 h-48 w-48 rounded-full bg-fuchsia-500/15 blur-3xl" />
           <h2 className="relative font-heading text-3xl font-semibold sm:text-4xl md:text-5xl">
-            Stop doom-scrolling.
+            Find the perfect movie in seconds.
             <br />
-            <span className="text-primary">Start shelf-scrolling.</span>
+            <span className="text-primary">No endless scrolling.</span>
           </h2>
           <p className="relative mx-auto mt-4 max-w-lg text-zinc-400">
-            Free to use. Your lists stay yours. Jump in and add your first ranked row tonight.
+            {POSITIONING_STATEMENT}
           </p>
           <div className="relative mt-8 flex flex-wrap justify-center gap-3">
             <Link
               href={landingSignInHref}
               className={cn(buttonVariants({ size: "lg" }), "h-12 px-8")}
             >
-              Launch Moviefy
+              Pick for me
               <ArrowRight className="size-4" />
             </Link>
             <Link
               href={landingSignInHref}
               className={cn(buttonVariants({ size: "lg", variant: "outline" }), "h-12 border-white/20 bg-black/20")}
             >
-              Explore first
+              Your taste profile
             </Link>
           </div>
         </section>

@@ -348,7 +348,7 @@ export function MovieDetailReviewsSection({
                                       const ok = await onToggleReviewLike(row.userId);
                                       if (!ok) {
                                         setSocialNotice(
-                                          "Could not update like — run supabase/migrate-movie-review-likes-replies.sql?",
+                                          "Could not update like. Ensure review social tables and policies are migrated for your auth mode.",
                                         );
                                       }
                                     } catch {
@@ -447,7 +447,7 @@ export function MovieDetailReviewsSection({
                                             setReplyOpenFor(null);
                                           } else {
                                             setSocialNotice(
-                                              "Could not post reply — run supabase/migrate-movie-review-likes-replies.sql?",
+                                              "Could not post reply. Ensure review social tables and policies are migrated for your auth mode.",
                                             );
                                           }
                                         } catch {

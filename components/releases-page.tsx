@@ -92,7 +92,7 @@ function groupByDate(items: ScheduleItem[]): Map<string, ScheduleItem[]> {
 
 export function ReleasesPage() {
   const router = useRouter();
-  const { client, appUser } = useSupabaseApp();
+  const { client, appUser, dbUserId } = useSupabaseApp();
   const [windowKey, setWindowKey] = useState<ScheduleWindow>("today");
   const [typeFilter, setTypeFilter] = useState<"all" | ScheduleMedia>("all");
   const [genreFilter, setGenreFilter] = useState<"all" | Genre>("all");
@@ -109,12 +109,12 @@ export function ReleasesPage() {
   }, [toastMsg]);
 
   useEffect(() => {
-    if (!client || !appUser) {
+    if (!client || !dbUserId) {
       setTrackedIds(new Set());
       return;
     }
     let cancelled = false;
-    void fetchUserReleaseWatchlist(client, appUser.id).then((rows) => {
+    void fetchUserReleaseWatchlist(client, dbUserId).then((rows) => {
       if (cancelled) return;
       setTrackedIds(
         new Set(rows.map((r) => `${r.mediaType}-${r.tmdbId}`)),
@@ -123,7 +123,7 @@ export function ReleasesPage() {
     return () => {
       cancelled = true;
     };
-  }, [client, appUser?.id]);
+  }, [client, dbUserId]);
 
   const load = useCallback(() => {
     let cancelled = false;
@@ -176,12 +176,12 @@ export function ReleasesPage() {
   }
 
   async function toggleReleaseWatch(item: ScheduleItem) {
-    if (!client || !appUser) {
+    if (!client || !dbUserId) {
       setToastMsg("Sign in to save titles for your theatre.");
       return;
     }
     const key = watchlistKey(item);
-    const uid = appUser.id;
+    const uid = dbUserId;
     if (trackedIds.has(key)) {
       const ok = await removeUserReleaseWatchlist(
         client,

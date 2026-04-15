@@ -76,6 +76,58 @@ function canonicalRatingSource(name: string): string {
   return name.trim();
 }
 
+/**
+ * Provider-first outbound links (prefer direct provider search pages over TMDB/JustWatch).
+ * These are best-effort patterns; exact title deep-links usually require partner APIs.
+ */
+function providerDirectWatchUrl(
+  providerName: string,
+  title: string,
+  year: string,
+): string | null {
+  const q = `${title} ${year}`.trim();
+  const query = encodeURIComponent(q);
+  const n = providerName.trim().toLowerCase();
+
+  if (n.includes("prime")) {
+    return `https://www.primevideo.com/search/ref=atv_nb_sr?phrase=${query}`;
+  }
+  if (n.includes("netflix")) {
+    return `https://www.netflix.com/search?q=${query}`;
+  }
+  if (n.includes("disney")) {
+    return `https://www.disneyplus.com/search/${query}`;
+  }
+  if (n === "hulu" || n.includes("hulu")) {
+    return `https://www.hulu.com/search?q=${query}`;
+  }
+  if (n === "max" || n.includes("hbo max") || n.includes("max amazon channel")) {
+    return `https://play.max.com/search?q=${query}`;
+  }
+  if (n.includes("apple tv")) {
+    return `https://tv.apple.com/search?term=${query}`;
+  }
+  if (n.includes("youtube")) {
+    return `https://www.youtube.com/results?search_query=${query}`;
+  }
+  if (n.includes("google play")) {
+    return `https://play.google.com/store/search?q=${query}&c=movies`;
+  }
+  if (n.includes("jiohotstar") || n.includes("hotstar")) {
+    return `https://www.hotstar.com/in/search?q=${query}`;
+  }
+  if (n.includes("zee5")) {
+    return `https://www.zee5.com/search?query=${query}`;
+  }
+  if (n.includes("sony liv") || n.includes("sonyliv")) {
+    return `https://www.sonyliv.com/search/${query}`;
+  }
+  if (n.includes("mx player")) {
+    return `https://www.mxplayer.in/search?query=${query}`;
+  }
+  return null;
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const region = searchParams.get("region") || "US";
@@ -176,6 +228,7 @@ export async function GET(request: NextRequest) {
         results?: Record<
           string,
           {
+            link?: string;
             flatrate?: { provider_name: string; logo_path: string | null }[];
             rent?: { provider_name: string; logo_path: string | null }[];
             buy?: { provider_name: string; logo_path: string | null }[];
@@ -256,6 +309,9 @@ export async function GET(request: NextRequest) {
 
       const us = prov.results?.[region];
       if (us) {
+        const tmdbWatchFallback = typeof us.link === "string" && us.link.trim().length > 0
+          ? us.link.trim()
+          : null;
         const seen = new Set<string>();
         for (const cat of ["flatrate", "rent", "buy"] as const) {
           const arr = us[cat] ?? [];
@@ -268,6 +324,9 @@ export async function GET(request: NextRequest) {
               logoUrl: p.logo_path
                 ? `https://image.tmdb.org/t/p/w45${p.logo_path}`
                 : null,
+              watchUrl:
+                providerDirectWatchUrl(p.provider_name, resolvedTitle, resolvedYear) ??
+                tmdbWatchFallback,
             });
           }
         }

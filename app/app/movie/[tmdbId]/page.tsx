@@ -21,7 +21,7 @@ export default function TmdbMoviePage() {
   const params = useParams();
   const pathname = usePathname();
   const sp = useSearchParams();
-  const { client, appUser } = useSupabaseApp();
+  const { client, appUser, dbUserId } = useSupabaseApp();
 
   const viewerDisplayName =
     (appUser?.user_metadata as { full_name?: string; name?: string } | undefined)
@@ -91,14 +91,14 @@ export default function TmdbMoviePage() {
   }, [toastMsg]);
 
   useEffect(() => {
-    if (!client || !appUser) return;
-    void fetchSavedMovieKeys(client, appUser.id).then(setSavedIds);
-  }, [client, appUser?.id]);
+    if (!client || !dbUserId) return;
+    void fetchSavedMovieKeys(client, dbUserId).then(setSavedIds);
+  }, [client, dbUserId]);
 
   useEffect(() => {
-    if (!client || !appUser || !movie) return;
-    void fetchUserPlaylists(client, appUser.id).then(setLibraryPlaylists);
-  }, [client, appUser?.id, movie?.id]);
+    if (!client || !dbUserId || !movie) return;
+    void fetchUserPlaylists(client, dbUserId).then(setLibraryPlaylists);
+  }, [client, dbUserId, movie?.id]);
 
   if (!movie) {
     return (
@@ -113,16 +113,16 @@ export default function TmdbMoviePage() {
     (movie.tmdbId != null && savedIds.has(`tmdb-${movie.tmdbId}`));
 
   async function refreshLibrary() {
-    if (!client || !appUser) return;
-    const pl = await fetchUserPlaylists(client, appUser.id);
+    if (!client || !dbUserId) return;
+    const pl = await fetchUserPlaylists(client, dbUserId);
     setLibraryPlaylists(pl);
   }
 
   async function onToggleWatched() {
-    if (!client || !appUser || !movie) return;
+    if (!client || !dbUserId || !movie) return;
     setWatchedBusy(true);
     try {
-      const pl = await getOrCreatePrimaryWatchedPlaylist(client, appUser.id);
+      const pl = await getOrCreatePrimaryWatchedPlaylist(client, dbUserId);
       if (!pl) {
         toast("Could not open your Watched list");
         return;
@@ -153,14 +153,14 @@ export default function TmdbMoviePage() {
         inActiveList={inAnyPlaylist}
         saved={saved}
         onToggleSave={async () => {
-          if (!client || !appUser) return;
+          if (!client || !dbUserId) return;
           const was = saved;
-          const ok = await setMovieSavedDb(client, appUser.id, movie, !was);
+          const ok = await setMovieSavedDb(client, dbUserId, movie, !was);
           if (!ok) {
             toast("Could not update saved");
             return;
           }
-          const keys = await fetchSavedMovieKeys(client, appUser.id);
+          const keys = await fetchSavedMovieKeys(client, dbUserId);
           setSavedIds(keys);
           toast(was ? "Removed from saved" : "Saved for later");
         }}
@@ -172,10 +172,10 @@ export default function TmdbMoviePage() {
           setPickListOpen(true);
         }}
         watched={inWatched}
-        onToggleWatched={appUser ? onToggleWatched : undefined}
+        onToggleWatched={dbUserId ? onToggleWatched : undefined}
         watchedBusy={watchedBusy}
         supabase={client}
-        userId={appUser?.id ?? null}
+        userId={dbUserId}
         viewerDisplayName={viewerDisplayName}
         tmdbMedia={tmdbMedia}
       />
@@ -184,7 +184,7 @@ export default function TmdbMoviePage() {
         onOpenChange={setPickListOpen}
         movie={movie}
         client={client}
-        userId={appUser?.id ?? null}
+        userId={dbUserId}
         onNotify={toast}
         onUpdated={refreshLibrary}
         signInNextPath={signInNextPath}

@@ -94,6 +94,7 @@ export type MovieDetailViewProps = {
   tmdbMedia?: "movie" | "tv";
 };
 
+
 /** Page: document flow (window scroll — avoids nested scroll traps). Dialog: Radix scroll area. */
 function MovieDetailScrollShell({
   isPage,
@@ -192,6 +193,7 @@ export function MovieDetailView({
   );
   const [reviewSort, setReviewSort] = useState<"recent" | "longest">("recent");
   const [showAllDiscussion, setShowAllDiscussion] = useState(false);
+  const actorUserId = userId;
 
   useLayoutEffect(() => {
     if (!active || !movie?.tmdbId) return;
@@ -294,8 +296,8 @@ export function MovieDetailView({
         const meter = await fetchMovieTakeMeter(supabase, movie);
         if (cancelled) return;
         setTakeMeter(meter);
-        if (userId) {
-          const own = await fetchOwnMovieTake(supabase, userId, movie);
+        if (actorUserId) {
+          const own = await fetchOwnMovieTake(supabase, actorUserId, movie);
           if (cancelled) return;
           setTakeTierDraft(own?.tier ?? null);
           setTakeReviewDraft(own?.review ?? "");
@@ -318,7 +320,7 @@ export function MovieDetailView({
     return () => {
       cancelled = true;
     };
-  }, [active, supabase, userId, movie?.id, movie?.tmdbId, movieHasTmdb]);
+  }, [active, supabase, actorUserId, movie?.id, movie?.tmdbId, movieHasTmdb]);
 
   useEffect(() => {
     if (!active || !movie || !supabase || !movieHasTmdb) {
@@ -330,13 +332,13 @@ export function MovieDetailView({
     void fetchMovieTakeReviews(supabase, movie).then((rows) => {
       if (!cancelled) setReviewFeed(rows);
     });
-    void fetchReviewEngagement(supabase, movie, userId).then((eng) => {
+    void fetchReviewEngagement(supabase, movie, actorUserId).then((eng) => {
       if (!cancelled) setReviewEngagement(eng);
     });
     return () => {
       cancelled = true;
     };
-  }, [active, supabase, movie?.id, movieHasTmdb, userId]);
+  }, [active, supabase, movie?.id, movieHasTmdb, actorUserId]);
 
   const sortedDiscussion = useMemo(() => {
     const list = [...reviewFeed];
@@ -378,10 +380,10 @@ export function MovieDetailView({
   const m = movie;
 
   const refreshTakeAfterSave = useCallback(async () => {
-    if (!supabase || !userId || !movie) return;
+    if (!supabase || !actorUserId || !movie) return;
     const [meter, own, reviews] = await Promise.all([
       fetchMovieTakeMeter(supabase, movie),
-      fetchOwnMovieTake(supabase, userId, movie),
+      fetchOwnMovieTake(supabase, actorUserId, movie),
       fetchMovieTakeReviews(supabase, movie),
     ]);
     setTakeMeter(meter);
@@ -393,50 +395,58 @@ export function MovieDetailView({
       setBaselineTake(null);
     }
     setReviewFeed(reviews);
-    setReviewEngagement(await fetchReviewEngagement(supabase, movie, userId));
-  }, [supabase, userId, movie]);
+    setReviewEngagement(
+      await fetchReviewEngagement(supabase, movie, actorUserId),
+    );
+  }, [supabase, actorUserId, movie]);
 
   const handleToggleReviewLike = useCallback(
     async (reviewAuthorId: string): Promise<boolean> => {
-      if (!supabase || !userId || !movie) return false;
+      if (!supabase || !actorUserId || !movie) return false;
       const ok = await toggleReviewLikeDb(
         supabase,
         movie,
         reviewAuthorId,
-        userId,
+        actorUserId,
       );
       if (ok) {
         setReviewEngagement(
-          await fetchReviewEngagement(supabase, movie, userId),
+          await fetchReviewEngagement(supabase, movie, actorUserId),
         );
       }
       return ok;
     },
-    [supabase, userId, movie],
+    [supabase, actorUserId, movie],
   );
 
   const handlePostReviewReply = useCallback(
     async (reviewAuthorId: string, body: string): Promise<boolean> => {
-      if (!supabase || !userId || !movie) return false;
+      if (!supabase || !actorUserId || !movie) return false;
       const ok = await insertReviewReplyDb(
         supabase,
         movie,
         reviewAuthorId,
-        userId,
+        actorUserId,
         body,
       );
       if (ok) {
         setReviewEngagement(
-          await fetchReviewEngagement(supabase, movie, userId),
+          await fetchReviewEngagement(supabase, movie, actorUserId),
         );
       }
       return ok;
     },
-    [supabase, userId, movie],
+    [supabase, actorUserId, movie],
   );
 
   const saveTierPost = useCallback(async () => {
-    if (!supabase || !userId || !movie) return;
+    if (!supabase || !movie) return;
+    if (!actorUserId) {
+      setTakesError(
+        "Account link is still syncing. Please wait a few seconds and try posting again.",
+      );
+      return;
+    }
     if (!takeTierDraft) {
       setTakesError("Pick a tier (Skip → Love) before posting your meter.");
       return;
@@ -445,23 +455,29 @@ export function MovieDetailView({
     setTakesError(null);
     const ok = await upsertMovieUserTakeTierOnly(
       supabase,
-      userId,
+      actorUserId,
       movie,
       takeTierDraft,
     );
     if (!ok) {
       setTakesError(
-        "Could not save your meter. Run supabase/migrate-movie-user-takes.sql if the table is missing.",
+        "Could not save your meter. Ensure your Supabase schema is migrated for current auth mode (Clerk: supabase/migrate-clerk-user-ids.sql).",
       );
       setTierPostSaving(false);
       return;
     }
     await refreshTakeAfterSave();
     setTierPostSaving(false);
-  }, [supabase, userId, movie, takeTierDraft, refreshTakeAfterSave]);
+  }, [supabase, actorUserId, movie, takeTierDraft, refreshTakeAfterSave]);
 
   const saveReviewPost = useCallback(async () => {
-    if (!supabase || !userId || !movie) return;
+    if (!supabase || !movie) return;
+    if (!actorUserId) {
+      setTakesError(
+        "Account link is still syncing. Please wait a few seconds and try posting again.",
+      );
+      return;
+    }
     if (!baselineTake) {
       setTakesError("Post your vibe meter first, then you can add a written review.");
       return;
@@ -470,21 +486,28 @@ export function MovieDetailView({
     setTakesError(null);
     const ok = await upsertMovieUserTakeReviewOnly(
       supabase,
-      userId,
+      actorUserId,
       movie,
       takeReviewDraft,
       baselineTake.tier,
     );
     if (!ok) {
       setTakesError(
-        "Could not save your review. Run supabase/migrate-movie-user-takes.sql if the table is missing.",
+        "Could not save your review. Ensure your Supabase schema is migrated for current auth mode (Clerk: supabase/migrate-clerk-user-ids.sql).",
       );
       setReviewPostSaving(false);
       return;
     }
     await refreshTakeAfterSave();
     setReviewPostSaving(false);
-  }, [supabase, userId, movie, takeReviewDraft, baselineTake, refreshTakeAfterSave]);
+  }, [
+    supabase,
+    actorUserId,
+    movie,
+    takeReviewDraft,
+    baselineTake,
+    refreshTakeAfterSave,
+  ]);
 
   function openTrailer() {
     if (!m || loading) return;
@@ -992,31 +1015,68 @@ export function MovieDetailView({
                                 {data.streaming.map((s) => (
                                   <li
                                     key={`${s.name}-${s.type}`}
-                                    className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 py-1 pl-1 pr-3 text-xs"
+                                    className="text-xs"
                                   >
-                                    {s.logoUrl ? (
-                                      // eslint-disable-next-line @next/next/no-img-element
-                                      <img
-                                        src={s.logoUrl}
-                                        alt=""
-                                        width={22}
-                                        height={22}
-                                        className="rounded-full"
-                                      />
+                                    {s.watchUrl ? (
+                                      <a
+                                        href={s.watchUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 py-1 pl-1 pr-3 text-xs transition hover:border-primary/40 hover:bg-white/10"
+                                        title={`Open ${s.name} options`}
+                                      >
+                                        {s.logoUrl ? (
+                                          // eslint-disable-next-line @next/next/no-img-element
+                                          <img
+                                            src={s.logoUrl}
+                                            alt=""
+                                            width={22}
+                                            height={22}
+                                            className="rounded-full"
+                                          />
+                                        ) : (
+                                          <span className="flex size-[22px] items-center justify-center rounded-full bg-white/10 text-[10px]">
+                                            {s.name.slice(0, 1)}
+                                          </span>
+                                        )}
+                                        <span className="font-medium text-white/90">
+                                          {s.name}
+                                        </span>
+                                        <Badge
+                                          variant="secondary"
+                                          className="h-5 border-0 bg-white/10 text-[10px] capitalize text-white/80"
+                                        >
+                                          {s.type === "flatrate" ? "Sub" : s.type}
+                                        </Badge>
+                                        <ExternalLink className="size-3 text-white/50" />
+                                      </a>
                                     ) : (
-                                      <span className="flex size-[22px] items-center justify-center rounded-full bg-white/10 text-[10px]">
-                                        {s.name.slice(0, 1)}
-                                      </span>
+                                      <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 py-1 pl-1 pr-3 text-xs">
+                                        {s.logoUrl ? (
+                                          // eslint-disable-next-line @next/next/no-img-element
+                                          <img
+                                            src={s.logoUrl}
+                                            alt=""
+                                            width={22}
+                                            height={22}
+                                            className="rounded-full"
+                                          />
+                                        ) : (
+                                          <span className="flex size-[22px] items-center justify-center rounded-full bg-white/10 text-[10px]">
+                                            {s.name.slice(0, 1)}
+                                          </span>
+                                        )}
+                                        <span className="font-medium text-white/90">
+                                          {s.name}
+                                        </span>
+                                        <Badge
+                                          variant="secondary"
+                                          className="h-5 border-0 bg-white/10 text-[10px] capitalize text-white/80"
+                                        >
+                                          {s.type === "flatrate" ? "Sub" : s.type}
+                                        </Badge>
+                                      </div>
                                     )}
-                                    <span className="font-medium text-white/90">
-                                      {s.name}
-                                    </span>
-                                    <Badge
-                                      variant="secondary"
-                                      className="h-5 border-0 bg-white/10 text-[10px] capitalize text-white/80"
-                                    >
-                                      {s.type === "flatrate" ? "Sub" : s.type}
-                                    </Badge>
                                   </li>
                                 ))}
                               </ul>
@@ -1120,7 +1180,7 @@ export function MovieDetailView({
                         <MovieDetailReviewsSection
                           movieHasTmdb={movieHasTmdb}
                           supabase={supabase}
-                          userId={userId}
+                          userId={userId ?? actorUserId}
                           viewerDisplayName={viewerDisplayName}
                           takesLoading={takesLoading}
                           takeMeter={takeMeter}
